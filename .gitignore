@@ -1,0 +1,39 @@
+# Secrets
+.env
+*.secret
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data
+*.db
+*.sqlite
+index/
+cache/
+logs/
+
+# Large files
+*.mkv
+*.m4a
+*.mp3
+*.mp4
