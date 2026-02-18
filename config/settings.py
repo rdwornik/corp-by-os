@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     ollama_model_fast: str = "llama3.2"
     ollama_model_quality: str = "mistral"
     ollama_model_embed: str = "nomic-embed-text"
+
+    # File Organizer models (local)
+    ollama_model_reader: str = "qwen2.5:7b"      # Content understanding
+    ollama_model_reasoner: str = "deepseek-r1:1.5b"  # Categorization & reasoning
     
     # Cloud
     default_cloud_provider: Literal["claude", "gemini"] = "claude"
