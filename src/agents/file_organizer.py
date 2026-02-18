@@ -1,17 +1,20 @@
 """
-FileOrganizer Agent - Scans folders and proposes file renames.
+FileOrganizer Agent - LLM-powered file organization.
 
 Location: src/agents/file_organizer.py
 
-Naming convention: [TYPE]_[Description]_[YYYY-MM-DD]_[vNN].ext
+Uses:
+- qwen2.5:7b for content understanding
+- deepseek-r1:1.5b for categorization and reasoning
 
-Types: MeetingNotes, Recording, Transcript, Presentation,
-       Document, RFP, Email, Screenshot, Diagram
+Naming convention: [TYPE]_[Description]_[YYYY-MM-DD]_[vNN].ext
 """
 
 import re
+import json
 import shutil
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -37,15 +40,41 @@ class FileType(Enum):
     UNKNOWN = "Unknown"
 
 
+class DestinationFolder(Enum):
+    """Target folders based on PROJECT_CONTEXT.md structure."""
+    INBOX_RECORDINGS = "00_Inbox/recordings"
+    INBOX_DOCUMENTS = "00_Inbox/documents"
+    INBOX_EMAILS = "00_Inbox/emails"
+    PROJECTS = "10_Projects"
+    KNOWLEDGE = "20_Knowledge"
+    TEMPLATES = "30_Templates"
+    ARCHIVE = "80_Archive"
+
+
+@dataclass
+class FileAnalysis:
+    """Result of LLM content analysis."""
+    summary: str
+    file_type: FileType
+    suggested_name: str
+    destination: DestinationFolder
+    project_name: Optional[str]  # e.g., "Honda_PALOMA" if project-related
+    reasoning: str
+    confidence: float
+    content_preview: str = ""
+
+
 @dataclass
 class RenameProposal:
-    """Proposed rename for a file."""
+    """Proposed rename and move for a file."""
     original_path: Path
     new_name: str
     new_path: Path
+    destination: DestinationFolder
     file_type: FileType
-    reason: str
-    confidence: float  # 0.0 - 1.0
+    summary: str
+    reasoning: str
+    confidence: float
     needs_review: bool = False
 
     @property
@@ -63,14 +92,76 @@ class ScanResult:
     errors: list[str] = field(default_factory=list)
 
     @property
-    def needs_rename(self) -> int:
+    def needs_action(self) -> int:
         return len(self.proposals)
 
-    @property
-    def compliance_rate(self) -> float:
-        if self.total_files == 0:
-            return 1.0
-        return self.already_compliant / self.total_files
+
+class ContentReader:
+    """Reads content from various file formats."""
+
+    SUPPORTED_EXTENSIONS = {'.txt', '.md', '.docx', '.pdf'}
+    MAX_CONTENT_LENGTH = 8000  # Characters to send to LLM
+
+    @classmethod
+    def can_read(cls, path: Path) -> bool:
+        return path.suffix.lower() in cls.SUPPORTED_EXTENSIONS
+
+    @classmethod
+    def read(cls, path: Path) -> str:
+        """Read file content, return empty string if unsupported."""
+        ext = path.suffix.lower()
+
+        try:
+            if ext in {'.txt', '.md'}:
+                return cls._read_text(path)
+            elif ext == '.docx':
+                return cls._read_docx(path)
+            elif ext == '.pdf':
+                return cls._read_pdf(path)
+        except Exception as e:
+            logger.warning(f"Failed to read {path.name}: {e}")
+
+        return ""
+
+    @classmethod
+    def _read_text(cls, path: Path) -> str:
+        """Read plain text file."""
+        encodings = ['utf-8', 'cp1250', 'cp1252', 'latin-1']
+        for enc in encodings:
+            try:
+                content = path.read_text(encoding=enc)
+                return content[:cls.MAX_CONTENT_LENGTH]
+            except UnicodeDecodeError:
+                continue
+        return ""
+
+    @classmethod
+    def _read_docx(cls, path: Path) -> str:
+        """Read Word document."""
+        try:
+            from docx import Document
+            doc = Document(str(path))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            content = "\n".join(paragraphs)
+            return content[:cls.MAX_CONTENT_LENGTH]
+        except ImportError:
+            logger.warning("python-docx not installed, skipping docx")
+            return ""
+
+    @classmethod
+    def _read_pdf(cls, path: Path) -> str:
+        """Read PDF document."""
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(str(path))
+            text_parts = []
+            for page in reader.pages[:10]:  # First 10 pages
+                text_parts.append(page.extract_text() or "")
+            content = "\n".join(text_parts)
+            return content[:cls.MAX_CONTENT_LENGTH]
+        except ImportError:
+            logger.warning("pypdf not installed, skipping pdf")
+            return ""
 
 
 class NamingConvention:
@@ -80,7 +171,6 @@ class NamingConvention:
     Format: [TYPE]_[Description]_[YYYY-MM-DD]_[vNN].ext
     """
 
-    # Regex for valid name format
     VALID_PATTERN = re.compile(
         r'^([A-Z][a-zA-Z]+)'           # TYPE (PascalCase)
         r'_([A-Z][a-zA-Z0-9_]+)'       # Description (PascalCase with _, allows digits)
@@ -89,108 +179,40 @@ class NamingConvention:
         r'\.([a-zA-Z0-9]+)$'           # Extension
     )
 
-    # Extension to type mapping
     EXTENSION_MAP = {
-        # Recordings
-        '.mkv': FileType.RECORDING,
-        '.mp4': FileType.RECORDING,
-        '.webm': FileType.RECORDING,
-        '.m4a': FileType.RECORDING,
-        '.mp3': FileType.RECORDING,
-        '.wav': FileType.RECORDING,
-        # Presentations
-        '.pptx': FileType.PRESENTATION,
-        '.ppt': FileType.PRESENTATION,
-        '.key': FileType.PRESENTATION,
-        # Documents
-        '.docx': FileType.DOCUMENT,
-        '.doc': FileType.DOCUMENT,
-        '.pdf': FileType.DOCUMENT,
-        '.txt': FileType.DOCUMENT,
-        # Transcripts / Notes (markdown)
+        '.mkv': FileType.RECORDING, '.mp4': FileType.RECORDING,
+        '.webm': FileType.RECORDING, '.m4a': FileType.RECORDING,
+        '.mp3': FileType.RECORDING, '.wav': FileType.RECORDING,
+        '.pptx': FileType.PRESENTATION, '.ppt': FileType.PRESENTATION,
+        '.docx': FileType.DOCUMENT, '.doc': FileType.DOCUMENT,
+        '.pdf': FileType.DOCUMENT, '.txt': FileType.DOCUMENT,
         '.md': FileType.MEETING_NOTES,
-        # Diagrams
-        '.drawio': FileType.DIAGRAM,
-        '.vsdx': FileType.DIAGRAM,
-        # Screenshots
-        '.png': FileType.SCREENSHOT,
-        '.jpg': FileType.SCREENSHOT,
-        '.jpeg': FileType.SCREENSHOT,
-        # Email
-        '.eml': FileType.EMAIL,
-        '.msg': FileType.EMAIL,
-        # Excel (often RFP related)
-        '.xlsx': FileType.DOCUMENT,
-        '.xls': FileType.DOCUMENT,
-    }
-
-    # Keywords to detect file types
-    TYPE_KEYWORDS = {
-        FileType.MEETING_NOTES: ['meeting', 'notes', 'minutes', 'spotkanie', 'notatki'],
-        FileType.RECORDING: ['recording', 'rec', 'call', 'nagranie', 'video'],
-        FileType.TRANSCRIPT: ['transcript', 'transkrypcja', 'transkrypt'],
-        FileType.PRESENTATION: ['presentation', 'prez', 'deck', 'slides', 'prezentacja'],
-        FileType.RFP: ['rfp', 'rfq', 'rfi', 'tender', 'przetarg', 'zapytanie'],
-        FileType.EMAIL: ['email', 'mail', 'message', 'wiadomość'],
-        FileType.SCREENSHOT: ['screenshot', 'screen', 'capture', 'zrzut'],
-        FileType.DIAGRAM: ['diagram', 'architecture', 'flow', 'schemat', 'architektura'],
+        '.drawio': FileType.DIAGRAM, '.vsdx': FileType.DIAGRAM,
+        '.png': FileType.SCREENSHOT, '.jpg': FileType.SCREENSHOT,
+        '.eml': FileType.EMAIL, '.msg': FileType.EMAIL,
+        '.xlsx': FileType.DOCUMENT, '.xls': FileType.DOCUMENT,
     }
 
     @classmethod
     def is_compliant(cls, filename: str) -> bool:
-        """Check if filename follows naming convention."""
         return cls.VALID_PATTERN.match(filename) is not None
 
     @classmethod
-    def parse(cls, filename: str) -> Optional[dict]:
-        """Parse compliant filename into components."""
-        match = cls.VALID_PATTERN.match(filename)
-        if not match:
-            return None
-        return {
-            'type': match.group(1),
-            'description': match.group(2),
-            'date': match.group(3),
-            'version': match.group(4),
-            'extension': match.group(5),
-        }
-
-    @classmethod
-    def detect_type(cls, path: Path) -> FileType:
-        """Detect file type from extension and name."""
-        ext = path.suffix.lower()
-        name_lower = path.stem.lower()
-
-        # Check keywords first
-        for file_type, keywords in cls.TYPE_KEYWORDS.items():
-            for keyword in keywords:
-                if keyword in name_lower:
-                    return file_type
-
-        # Fallback to extension
-        return cls.EXTENSION_MAP.get(ext, FileType.UNKNOWN)
-
-    @classmethod
-    def extract_date(cls, path: Path) -> Optional[str]:
+    def extract_date(cls, path: Path) -> str:
         """Extract date from filename or file metadata."""
         name = path.stem
-
-        # Try common date patterns in filename
         patterns = [
-            r'(\d{4}-\d{2}-\d{2})',           # ISO: 2025-01-15
-            r'(\d{4}_\d{2}_\d{2})',           # Underscore: 2025_01_15
-            r'(\d{2}-\d{2}-\d{4})',           # US: 01-15-2025
-            r'(\d{2}\.\d{2}\.\d{4})',         # EU: 15.01.2025
-            r'(\d{8})',                        # Compact: 20250115
+            r'(\d{4}-\d{2}-\d{2})',
+            r'(\d{4}_\d{2}_\d{2})',
+            r'(\d{2}-\d{2}-\d{4})',
+            r'(\d{2}\.\d{2}\.\d{4})',
+            r'(\d{8})',
         ]
-
         for pattern in patterns:
             match = re.search(pattern, name)
             if match:
-                date_str = match.group(1)
-                return cls._normalize_date(date_str)
+                return cls._normalize_date(match.group(1))
 
-        # Fallback to file modification time
         try:
             mtime = path.stat().st_mtime
             return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
@@ -199,62 +221,20 @@ class NamingConvention:
 
     @classmethod
     def _normalize_date(cls, date_str: str) -> str:
-        """Normalize various date formats to ISO YYYY-MM-DD."""
         date_str = date_str.replace('_', '-').replace('.', '-')
-
-        # Already ISO
         if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
             return date_str
-
-        # Compact: 20250115
         if re.match(r'^\d{8}$', date_str):
             return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-
-        # US/EU format: need to parse
         parts = date_str.split('-')
-        if len(parts) == 3:
-            if len(parts[2]) == 4:  # Year at end
-                if int(parts[0]) > 12:  # Day first (EU)
-                    return f"{parts[2]}-{parts[1]}-{parts[0]}"
-                else:  # Month first (US)
-                    return f"{parts[2]}-{parts[0]}-{parts[1]}"
-
+        if len(parts) == 3 and len(parts[2]) == 4:
+            if int(parts[0]) > 12:
+                return f"{parts[2]}-{parts[1]}-{parts[0]}"
+            return f"{parts[2]}-{parts[0]}-{parts[1]}"
         return date_str
 
     @classmethod
-    def clean_description(cls, text: str) -> str:
-        """Clean and format description for naming convention."""
-        # Remove common prefixes/suffixes
-        text = re.sub(r'^(re|fwd|fw):\s*', '', text, flags=re.I)
-        text = re.sub(r'\s*\(copy\)|\s*-\s*copy', '', text, flags=re.I)
-
-        # Remove date patterns (will be added separately)
-        text = re.sub(r'\d{4}[-_]\d{2}[-_]\d{2}', '', text)
-        text = re.sub(r'\d{2}[-_.]\d{2}[-_.]\d{4}', '', text)
-        text = re.sub(r'\d{8}', '', text)
-
-        # Remove version patterns (will be added separately)
-        text = re.sub(r'[_\s]?v\d+', '', text, flags=re.I)
-        text = re.sub(r'[_\s]?version\s*\d+', '', text, flags=re.I)
-
-        # Replace separators with spaces
-        text = re.sub(r'[-_\s]+', ' ', text)
-
-        # Clean up
-        text = text.strip()
-
-        # Convert to PascalCase with underscores
-        words = text.split()
-        words = [w.capitalize() for w in words if w]
-
-        if not words:
-            return "Untitled"
-
-        return '_'.join(words)
-
-    @classmethod
     def extract_version(cls, filename: str) -> Optional[str]:
-        """Extract version number from filename."""
         match = re.search(r'[_\s]v(\d{1,2})', filename, re.I)
         if match:
             return f"v{int(match.group(1)):02d}"
@@ -270,389 +250,475 @@ class NamingConvention:
         version: Optional[str] = None
     ) -> str:
         """Build compliant filename."""
-        parts = [
-            file_type.value,
-            cls.clean_description(description),
-            date,
-        ]
+        # Clean description
+        desc = re.sub(r'[^a-zA-Z0-9\s]', '', description)
+        words = desc.split()
+        words = [w.capitalize() for w in words if w]
+        if not words:
+            words = ["Untitled"]
+        clean_desc = '_'.join(words[:5])  # Max 5 words
 
+        parts = [file_type.value, clean_desc, date]
         if version:
             parts.append(version)
 
-        name = '_'.join(parts)
-
-        # Ensure extension has dot
         if not extension.startswith('.'):
             extension = f'.{extension}'
 
-        return f"{name}{extension}"
+        return f"{'_'.join(parts)}{extension}"
+
+
+class OllamaClient:
+    """Simple Ollama client for LLM calls."""
+
+    def __init__(self, base_url: str = "http://localhost:11434"):
+        self.base_url = base_url
+
+    def generate(self, model: str, prompt: str, system: str = "") -> str:
+        """Generate text using Ollama API."""
+        import urllib.request
+        import urllib.error
+
+        url = f"{self.base_url}/api/generate"
+        data = {
+            "model": model,
+            "prompt": prompt,
+            "system": system,
+            "stream": False,
+            "options": {"temperature": 0.3}
+        }
+
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(data).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=120) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                return result.get('response', '')
+        except urllib.error.URLError as e:
+            logger.error(f"Ollama connection failed: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Ollama generate failed: {e}")
+            raise
+
+    def is_available(self) -> bool:
+        """Check if Ollama is running."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"{self.base_url}/api/tags")
+            with urllib.request.urlopen(req, timeout=5):
+                return True
+        except Exception:
+            return False
 
 
 class FileOrganizer:
     """
-    Agent that scans folders and proposes file renames.
+    LLM-powered file organization agent.
+
+    Uses two models:
+    - qwen2.5:7b: Reads and understands file content
+    - deepseek-r1:1.5b: Categorizes and reasons about destination
 
     Usage:
         organizer = FileOrganizer()
         result = organizer.scan(folder_path)
-        organizer.preview(result)
-        organizer.apply(result, dry_run=True)  # Preview only
-        organizer.apply(result, dry_run=False)  # Actually rename
+        print(organizer.preview(result))
+        organizer.apply(result, dry_run=True)  # Always dry-run first!
     """
 
-    def __init__(self, use_llm: bool = False):
-        """
-        Initialize organizer.
+    # Folder structure for reasoning
+    FOLDER_STRUCTURE = """
+Folder structure (from PROJECT_CONTEXT.md):
+- 00_Inbox/recordings - new audio/video files awaiting processing
+- 00_Inbox/documents - new documents awaiting organization
+- 00_Inbox/emails - saved emails awaiting processing
+- 10_Projects/{Company_Solution}/ - active opportunities (e.g., Honda_PALOMA, PepsiCo_EMEA)
+- 20_Knowledge/ - general knowledge, product info, best practices
+- 30_Templates/ - reusable templates
+- 80_Archive/{YYYY}/ - completed/old projects by year
+"""
 
-        Args:
-            use_llm: If True, use LLM for smarter description extraction.
-                     Requires Ollama to be running.
-        """
+    def __init__(self):
         self.settings = get_settings()
-        self.use_llm = use_llm
-        self._llm_router = None
+        self.ollama = OllamaClient(self.settings.ollama_base_url)
+        self._llm_available = None
 
-        if use_llm:
-            try:
-                from src.core.llm.router import get_router
-                self._llm_router = get_router()
-            except Exception as e:
-                logger.warning(f"LLM not available: {e}")
-                self.use_llm = False
+    @property
+    def llm_available(self) -> bool:
+        if self._llm_available is None:
+            self._llm_available = self.ollama.is_available()
+        return self._llm_available
 
     def scan(
         self,
         folder: Path,
-        recursive: bool = False,
+        recursive: bool = True,
         extensions: Optional[list[str]] = None
     ) -> ScanResult:
-        """
-        Scan folder and generate rename proposals.
-
-        Args:
-            folder: Folder to scan
-            recursive: Scan subfolders
-            extensions: Filter by extensions (e.g., ['.mkv', '.pptx'])
-        """
+        """Scan folder and generate organization proposals."""
         folder = Path(folder)
         if not folder.exists():
             return ScanResult(
-                folder=folder,
-                total_files=0,
-                already_compliant=0,
+                folder=folder, total_files=0, already_compliant=0,
                 errors=[f"Folder does not exist: {folder}"]
             )
 
+        if not self.llm_available:
+            return ScanResult(
+                folder=folder, total_files=0, already_compliant=0,
+                errors=["Ollama not available. Start with: ollama serve"]
+            )
+
         # Collect files
-        if recursive:
-            files = list(folder.rglob('*'))
-        else:
-            files = list(folder.glob('*'))
-
-        # Filter to files only
+        files = list(folder.rglob('*') if recursive else folder.glob('*'))
         files = [f for f in files if f.is_file()]
+        files = [f for f in files if not f.name.startswith(('.', '~'))]
 
-        # Filter by extension if specified
         if extensions:
             extensions = [e.lower() if e.startswith('.') else f'.{e.lower()}' for e in extensions]
             files = [f for f in files if f.suffix.lower() in extensions]
 
-        # Skip system files
-        files = [f for f in files if not f.name.startswith('.')]
-        files = [f for f in files if not f.name.startswith('~')]
-
-        result = ScanResult(
-            folder=folder,
-            total_files=len(files),
-            already_compliant=0
-        )
+        result = ScanResult(folder=folder, total_files=len(files), already_compliant=0)
 
         for file_path in files:
             try:
                 if NamingConvention.is_compliant(file_path.name):
                     result.already_compliant += 1
                 else:
-                    proposal = self._create_proposal(file_path)
+                    proposal = self._analyze_and_propose(file_path)
                     if proposal:
                         result.proposals.append(proposal)
             except Exception as e:
                 result.errors.append(f"{file_path.name}: {e}")
+                logger.exception(f"Error processing {file_path}")
 
         return result
 
-    def _create_proposal(self, path: Path) -> Optional[RenameProposal]:
-        """Create rename proposal for a file."""
-        # Detect components
-        file_type = NamingConvention.detect_type(path)
+    def _analyze_and_propose(self, path: Path) -> Optional[RenameProposal]:
+        """Analyze file with LLM and create proposal."""
+        # Read content if possible
+        content = ""
+        if ContentReader.can_read(path):
+            content = ContentReader.read(path)
+
+        # Step 1: Understand content with qwen2.5:7b
+        understanding = self._understand_content(path, content)
+
+        # Step 2: Categorize with deepseek-r1:1.5b
+        analysis = self._categorize_file(path, content, understanding)
+
+        # Build new path
         date = NamingConvention.extract_date(path)
         version = NamingConvention.extract_version(path.name)
 
-        # Get description
-        if self.use_llm and self._llm_router:
-            description = self._llm_extract_description(path)
-            confidence = 0.8
-        else:
-            description = self._rule_extract_description(path)
-            confidence = 0.6
-
-        # Build new name
         new_name = NamingConvention.build_name(
-            file_type=file_type,
-            description=description,
+            file_type=analysis.file_type,
+            description=analysis.suggested_name,
             date=date,
             extension=path.suffix,
             version=version
         )
 
-        # Handle duplicates
-        new_path = path.parent / new_name
-        if new_path.exists() and new_path != path:
-            # Add version suffix
-            counter = 1
-            while new_path.exists():
-                ver = f"v{counter:02d}"
-                new_name = NamingConvention.build_name(
-                    file_type=file_type,
-                    description=description,
-                    date=date,
-                    extension=path.suffix,
-                    version=ver
-                )
-                new_path = path.parent / new_name
-                counter += 1
+        # Determine destination path
+        dest_path = self._resolve_destination(analysis)
+        new_path = dest_path / new_name
 
-        # Skip if no change needed
-        if new_name == path.name:
-            return None
+        # Handle duplicates
+        counter = 1
+        while new_path.exists() and new_path != path:
+            ver = f"v{counter:02d}"
+            new_name = NamingConvention.build_name(
+                file_type=analysis.file_type,
+                description=analysis.suggested_name,
+                date=date,
+                extension=path.suffix,
+                version=ver
+            )
+            new_path = dest_path / new_name
+            counter += 1
 
         return RenameProposal(
             original_path=path,
             new_name=new_name,
             new_path=new_path,
-            file_type=file_type,
-            reason=self._generate_reason(path, file_type),
-            confidence=confidence,
-            needs_review=file_type == FileType.UNKNOWN or confidence < 0.7
+            destination=analysis.destination,
+            file_type=analysis.file_type,
+            summary=analysis.summary,
+            reasoning=analysis.reasoning,
+            confidence=analysis.confidence,
+            needs_review=analysis.confidence < 0.7
         )
 
-    def _rule_extract_description(self, path: Path) -> str:
-        """Extract description using rules."""
-        stem = path.stem
+    def _understand_content(self, path: Path, content: str) -> str:
+        """Use qwen2.5:7b to understand file content."""
+        if not content:
+            return f"File: {path.name} (no readable content)"
 
-        # Remove common type indicators
-        for file_type, keywords in NamingConvention.TYPE_KEYWORDS.items():
-            for keyword in keywords:
-                stem = re.sub(rf'\b{keyword}\b', '', stem, flags=re.I)
-
-        return NamingConvention.clean_description(stem)
-
-    def _llm_extract_description(self, path: Path) -> str:
-        """Use LLM to extract meaningful description."""
-        prompt = f"""Extract a short description (2-4 words) for this filename.
-The description should be in PascalCase with underscores.
+        prompt = f"""Analyze this file and provide a brief summary.
 
 Filename: {path.name}
+Content (first {len(content)} chars):
+---
+{content[:4000]}
+---
 
-Rules:
-- Remove dates, versions, file types
-- Keep company names, topics, meeting types
-- Use English, capitalize each word
-- Separate words with underscores
-
-Examples:
-- "zoom_2025-01-15_meeting.mkv" -> "Zoom_Meeting"
-- "Honda PALOMA discovery call.pptx" -> "Honda_Paloma_Discovery"
-- "Q4 sales report final v2.docx" -> "Q4_Sales_Report"
-
-Respond with ONLY the description, nothing else."""
+Provide a 2-3 sentence summary of what this file contains.
+Focus on: topic, purpose, any company/project names mentioned."""
 
         try:
-            response = self._llm_router.generate(
-                prompt,
-                task="bulk_categorization",
-                quality="fast",
-                force_local=True
+            response = self.ollama.generate(
+                model=self.settings.ollama_model_reader,
+                prompt=prompt,
+                system="You are a document analyst. Be concise and factual."
             )
-            description = response.content.strip()
-            # Validate
-            if re.match(r'^[A-Z][a-zA-Z_]+$', description):
-                return description
+            return response.strip()
         except Exception as e:
-            logger.debug(f"LLM extraction failed: {e}")
+            logger.warning(f"Content understanding failed: {e}")
+            return f"File: {path.name}"
 
-        return self._rule_extract_description(path)
+    def _categorize_file(self, path: Path, content: str, understanding: str) -> FileAnalysis:
+        """Use deepseek-r1:1.5b to categorize and reason about destination."""
+        ext = path.suffix.lower()
+        default_type = NamingConvention.EXTENSION_MAP.get(ext, FileType.UNKNOWN)
 
-    def _generate_reason(self, path: Path, file_type: FileType) -> str:
-        """Generate reason for rename."""
-        reasons = []
+        prompt = f"""Categorize this file and decide where it should go.
 
-        if file_type == FileType.UNKNOWN:
-            reasons.append("unknown file type")
+Filename: {path.name}
+Extension: {ext}
+Understanding: {understanding}
 
-        if not re.search(r'\d{4}-\d{2}-\d{2}', path.name):
-            reasons.append("missing ISO date")
+{self.FOLDER_STRUCTURE}
 
-        if '_' not in path.name or ' ' in path.name:
-            reasons.append("wrong separators")
+File types: MeetingNotes, Recording, Transcript, Presentation, Document, RFP, Email, Screenshot, Diagram
 
-        if not reasons:
-            reasons.append("format standardization")
+Respond in this exact JSON format:
+{{
+    "file_type": "Document",
+    "suggested_name": "Brief descriptive name without date",
+    "destination": "20_Knowledge",
+    "project_name": null,
+    "reasoning": "Why this categorization makes sense",
+    "confidence": 0.8
+}}
 
-        return ", ".join(reasons)
+Rules:
+- If related to a specific company/opportunity, destination should be "10_Projects" and include project_name as "Company_Solution"
+- Generic knowledge/reference material goes to "20_Knowledge"
+- New unprocessed files stay in appropriate 00_Inbox subfolder
+- suggested_name should be 2-4 words, PascalCase style (will be formatted later)
+- confidence from 0.0 to 1.0"""
+
+        try:
+            response = self.ollama.generate(
+                model=self.settings.ollama_model_reasoner,
+                prompt=prompt,
+                system="You are a file organization assistant. Respond only with valid JSON."
+            )
+
+            # Extract JSON from response (handle markdown code blocks)
+            json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+
+                file_type = FileType.UNKNOWN
+                for ft in FileType:
+                    if ft.value.lower() == data.get('file_type', '').lower():
+                        file_type = ft
+                        break
+
+                dest = DestinationFolder.INBOX_DOCUMENTS
+                dest_str = data.get('destination', '')
+                for d in DestinationFolder:
+                    if d.value in dest_str or dest_str in d.value:
+                        dest = d
+                        break
+
+                return FileAnalysis(
+                    summary=understanding,
+                    file_type=file_type if file_type != FileType.UNKNOWN else default_type,
+                    suggested_name=data.get('suggested_name', path.stem),
+                    destination=dest,
+                    project_name=data.get('project_name'),
+                    reasoning=data.get('reasoning', 'LLM categorization'),
+                    confidence=float(data.get('confidence', 0.6))
+                )
+
+        except Exception as e:
+            logger.warning(f"Categorization failed: {e}")
+
+        # Fallback to rule-based
+        return FileAnalysis(
+            summary=understanding,
+            file_type=default_type,
+            suggested_name=path.stem,
+            destination=DestinationFolder.INBOX_DOCUMENTS,
+            project_name=None,
+            reasoning="Fallback: LLM categorization failed",
+            confidence=0.3
+        )
+
+    def _resolve_destination(self, analysis: FileAnalysis) -> Path:
+        """Resolve destination to actual path."""
+        base = self.settings.role_path
+
+        if analysis.destination == DestinationFolder.PROJECTS and analysis.project_name:
+            return base / "10_Projects" / analysis.project_name
+        elif analysis.destination == DestinationFolder.PROJECTS:
+            return base / "10_Projects"
+
+        return base / analysis.destination.value
 
     def preview(self, result: ScanResult) -> str:
-        """Generate preview text for scan result."""
+        """Generate detailed preview of proposals."""
         lines = [
-            f"=== File Organizer Scan ===",
+            "=" * 60,
+            "FILE ORGANIZER - SCAN RESULTS",
+            "=" * 60,
             f"Folder: {result.folder}",
-            f"",
-            f"Summary:",
-            f"  Total files:       {result.total_files}",
-            f"  Already compliant: {result.already_compliant}",
-            f"  Need rename:       {result.needs_rename}",
-            f"  Compliance rate:   {result.compliance_rate:.0%}",
-            f"",
+            f"Total files: {result.total_files}",
+            f"Already compliant: {result.already_compliant}",
+            f"Need organization: {result.needs_action}",
+            "",
         ]
 
         if result.errors:
-            lines.append(f"Errors ({len(result.errors)}):")
+            lines.append(f"ERRORS ({len(result.errors)}):")
             for err in result.errors[:5]:
                 lines.append(f"  ! {err}")
-            if len(result.errors) > 5:
-                lines.append(f"  ... and {len(result.errors) - 5} more")
             lines.append("")
 
         if result.proposals:
-            lines.append("Proposed renames:")
-            lines.append("")
+            lines.append("PROPOSALS:")
+            lines.append("-" * 60)
 
             for i, p in enumerate(result.proposals, 1):
-                flag = " [!]" if p.needs_review else ""
-                lines.append(f"{i:3}. {p.original_name}")
-                lines.append(f"     -> {p.new_name}{flag}")
-                lines.append(f"        Type: {p.file_type.value}, Confidence: {p.confidence:.0%}")
-                lines.append("")
+                review_flag = " [REVIEW]" if p.needs_review else ""
+                lines.append(f"\n{i}. {p.original_name}{review_flag}")
+                lines.append(f"   Summary: {p.summary[:100]}...")
+                lines.append(f"   Type: {p.file_type.value}")
+                lines.append(f"   New name: {p.new_name}")
+                lines.append(f"   Destination: {p.destination.value}")
+                lines.append(f"   Confidence: {p.confidence:.0%}")
+                lines.append(f"   Reasoning: {p.reasoning}")
         else:
             lines.append("All files are compliant!")
 
+        lines.append("")
+        lines.append("=" * 60)
         return "\n".join(lines)
 
     def apply(
         self,
         result: ScanResult,
         dry_run: bool = True,
-        skip_review: bool = False
+        skip_low_confidence: bool = True,
+        min_confidence: float = 0.5
     ) -> dict:
         """
-        Apply renames.
+        Apply organization proposals.
 
-        Args:
-            result: Scan result with proposals
-            dry_run: If True, only preview without actual changes
-            skip_review: If True, skip files marked needs_review
-
-        Returns:
-            Summary dict with renamed, skipped, failed counts
+        ALWAYS use dry_run=True first to preview changes!
         """
         summary = {
-            'renamed': [],
+            'moved': [],
             'skipped': [],
             'failed': [],
             'dry_run': dry_run
         }
 
         for proposal in result.proposals:
-            # Skip if needs review and not forced
-            if proposal.needs_review and not skip_review:
+            # Skip low confidence
+            if skip_low_confidence and proposal.confidence < min_confidence:
                 summary['skipped'].append({
                     'file': proposal.original_name,
-                    'reason': 'needs manual review'
+                    'reason': f'Low confidence ({proposal.confidence:.0%})'
                 })
                 continue
 
             if dry_run:
-                summary['renamed'].append({
-                    'from': proposal.original_name,
-                    'to': proposal.new_name,
-                    'action': 'would rename'
+                summary['moved'].append({
+                    'from': str(proposal.original_path),
+                    'to': str(proposal.new_path),
+                    'action': 'WOULD MOVE'
                 })
             else:
                 try:
-                    # Perform actual rename
-                    shutil.move(
-                        str(proposal.original_path),
-                        str(proposal.new_path)
-                    )
-                    summary['renamed'].append({
-                        'from': proposal.original_name,
-                        'to': proposal.new_name,
-                        'action': 'renamed'
+                    # Ensure destination exists
+                    proposal.new_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Move file
+                    shutil.move(str(proposal.original_path), str(proposal.new_path))
+
+                    summary['moved'].append({
+                        'from': str(proposal.original_path),
+                        'to': str(proposal.new_path),
+                        'action': 'MOVED'
                     })
-                    logger.info(f"Renamed: {proposal.original_name} -> {proposal.new_name}")
+                    logger.info(f"Moved: {proposal.original_name} -> {proposal.new_path}")
                 except Exception as e:
                     summary['failed'].append({
                         'file': proposal.original_name,
                         'error': str(e)
                     })
-                    logger.error(f"Failed to rename {proposal.original_name}: {e}")
 
         return summary
 
     def apply_summary(self, summary: dict) -> str:
-        """Generate summary text for apply result."""
+        """Generate summary of apply operation."""
         mode = "DRY RUN" if summary['dry_run'] else "APPLIED"
         lines = [
-            f"=== File Organizer - {mode} ===",
-            f"",
-            f"Renamed: {len(summary['renamed'])}",
+            "=" * 60,
+            f"FILE ORGANIZER - {mode}",
+            "=" * 60,
+            f"Moved: {len(summary['moved'])}",
             f"Skipped: {len(summary['skipped'])}",
-            f"Failed:  {len(summary['failed'])}",
-            f"",
+            f"Failed: {len(summary['failed'])}",
+            "",
         ]
 
-        if summary['renamed']:
-            lines.append("Changes:")
-            for item in summary['renamed'][:10]:
-                lines.append(f"  {item['from']}")
+        if summary['moved']:
+            lines.append("CHANGES:")
+            for item in summary['moved'][:10]:
+                lines.append(f"  {item['action']}: {Path(item['from']).name}")
                 lines.append(f"    -> {item['to']}")
-            if len(summary['renamed']) > 10:
-                lines.append(f"  ... and {len(summary['renamed']) - 10} more")
+            if len(summary['moved']) > 10:
+                lines.append(f"  ... and {len(summary['moved']) - 10} more")
+
+        if summary['skipped']:
+            lines.append("\nSKIPPED:")
+            for item in summary['skipped'][:5]:
+                lines.append(f"  {item['file']}: {item['reason']}")
 
         if summary['failed']:
-            lines.append("")
-            lines.append("Failures:")
+            lines.append("\nFAILED:")
             for item in summary['failed']:
                 lines.append(f"  {item['file']}: {item['error']}")
+
+        if summary['dry_run']:
+            lines.append("\n" + "=" * 60)
+            lines.append("This was a DRY RUN. No files were moved.")
+            lines.append("To apply changes, run with dry_run=False")
+            lines.append("=" * 60)
 
         return "\n".join(lines)
 
 
-# CLI convenience functions
-def scan_inbox(use_llm: bool = False) -> ScanResult:
-    """Scan the inbox folder."""
-    organizer = FileOrganizer(use_llm=use_llm)
+def scan_inbox() -> ScanResult:
+    """Scan the inbox folder with LLM analysis."""
+    organizer = FileOrganizer()
     settings = get_settings()
     return organizer.scan(settings.inbox_path, recursive=True)
-
-
-def scan_recordings(use_llm: bool = False) -> ScanResult:
-    """Scan recordings in inbox."""
-    organizer = FileOrganizer(use_llm=use_llm)
-    settings = get_settings()
-    return organizer.scan(
-        settings.inbox_recordings_path,
-        extensions=['.mkv', '.mp4', '.m4a', '.mp3', '.webm']
-    )
 
 
 if __name__ == "__main__":
     import sys
 
-    # Parse args
-    use_llm = '--llm' in sys.argv
-    apply_changes = '--apply' in sys.argv
+    apply_flag = '--apply' in sys.argv
 
-    # Get folder from args or use inbox
     folder = None
     for arg in sys.argv[1:]:
         if not arg.startswith('--'):
@@ -663,23 +729,21 @@ if __name__ == "__main__":
         folder = get_settings().inbox_path
 
     print(f"Scanning: {folder}")
-    print(f"Using LLM: {use_llm}")
+    print(f"Using models: qwen2.5:7b (reader), deepseek-r1:1.5b (reasoner)")
     print()
 
-    organizer = FileOrganizer(use_llm=use_llm)
-    result = organizer.scan(folder, recursive=True)
+    organizer = FileOrganizer()
 
+    if not organizer.llm_available:
+        print("ERROR: Ollama not available!")
+        print("Start Ollama with: ollama serve")
+        print("Then pull models: ollama pull qwen2.5:7b && ollama pull deepseek-r1:1.5b")
+        sys.exit(1)
+
+    result = organizer.scan(folder)
     print(organizer.preview(result))
 
     if result.proposals:
-        if apply_changes:
-            summary = organizer.apply(result, dry_run=False)
-        else:
-            summary = organizer.apply(result, dry_run=True)
-
+        summary = organizer.apply(result, dry_run=not apply_flag)
         print()
         print(organizer.apply_summary(summary))
-
-        if not apply_changes:
-            print()
-            print("Run with --apply to actually rename files.")
