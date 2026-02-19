@@ -212,13 +212,18 @@ Set via env var `CORP_ONEDRIVE_PATH`.
 - [x] Branch v2-migration created
 - [x] Removed: Ollama provider, sensitivity checker, hybrid LLM router
 - [x] Created: Sonnet API client (src/core/llm/sonnet.py)
+- [x] Phase 1: Archive copy complete (496 copied, 2832 already present, 3 ZIPs created)
+      Script: scripts/phase1_archive_copy.py
 
 ### In Progress
-- [ ] Phase 1 archive copy script
+- [ ] Phase 2: Technical Presales rename
+      Script: scripts/phase2_presales_rename.py
+      Plan: scripts/phase2_plan.json (261 files, regex-parsed, ready to review)
+      Status: plan generated, needs Sonnet API credits for full refinement,
+              then --execute to copy
 
 ### To Do
 - [ ] Phase 0: Delete screenshots script
-- [ ] Phase 2: Technical Presales rename script
 - [ ] Phase 3: Teams Chat triage script
 - [ ] FileOrganizer agent (v2, Sonnet-based)
 - [ ] Inbox Agent
