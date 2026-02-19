@@ -17,6 +17,7 @@ Reads OneDrive path from CORP_ONEDRIVE_PATH env var (or .env).
 
 import argparse
 import datetime
+import os
 import shutil
 import sys
 import zipfile
@@ -84,6 +85,7 @@ class Stats:
     zips_done: int = 0
     zipped_files: int = 0
     warnings: list[str] = field(default_factory=list)
+    cloud_only: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +110,31 @@ def is_zip_excluded(file: Path, onedrive: Path) -> bool:
     """Return True if file is inside one of the ZIP_MAP subtrees."""
     file_rel = rel(file, onedrive)
     return any(file_rel.startswith(src.replace("\\", "/")) for src, _ in ZIP_MAP)
+
+
+def lp(path: Path) -> str:
+    """Return Windows extended-length path string (bypasses 260-char MAX_PATH)."""
+    return "\\\\?\\" + os.path.abspath(str(path))
+
+
+def safe_copy(src: Path, dst: Path, stats: Stats) -> str:
+    """
+    Copy src -> dst with full Windows long-path support.
+
+    Returns one of: 'ok', 'cloud', 'fail'.
+    - 'cloud'  : WinError 389 — file not downloaded from OneDrive yet.
+    - 'fail'   : any other OS error (logged to stats.warnings).
+    """
+    try:
+        os.makedirs(lp(dst.parent), exist_ok=True)
+        shutil.copy2(lp(src), lp(dst))
+        return "ok"
+    except OSError as e:
+        if getattr(e, "winerror", None) == 389:
+            stats.cloud_only.append(str(src.name))
+            return "cloud"
+        stats.warnings.append(f"[FAIL] {src.name}: {e}")
+        return "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +179,13 @@ def copy_tree(
     else:
         for src_file, dst_file, relative in to_copy:
             dst_rel = rel(dst_file, mywork)
-            print(f"  [COPY] {src_file.name}  ->  MyWork/{dst_rel}")
-            dst_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, dst_file)
+            result  = safe_copy(src_file, dst_file, stats)
+            if result == "ok":
+                print(f"  [COPY]  {src_file.name}  ->  MyWork/{dst_rel}")
+            elif result == "cloud":
+                print(f"  [CLOUD] {src_file.name}  (not downloaded)")
+            else:
+                print(f"  [FAIL]  {src_file.name}  (see WARNINGS)")
 
     stats.copied  += len(to_copy)
     stats.skipped += to_skip
@@ -242,10 +273,14 @@ def copy_recordings(
             print(f"      [COPY] {yr}  {f.name}  ->  00_Tech_PreSales/00_Inbox/recordings/")
     else:
         for src_file, dst_file, yr in archive_files + inbox_files:
-            label = rel(dst_file, mywork)
-            print(f"  [COPY] {src_file.name}  ({yr})  ->  MyWork/{label}")
-            dst_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, dst_file)
+            label  = rel(dst_file, mywork)
+            result = safe_copy(src_file, dst_file, stats)
+            if result == "ok":
+                print(f"  [COPY]  {src_file.name}  ({yr})  ->  MyWork/{label}")
+            elif result == "cloud":
+                print(f"  [CLOUD] {src_file.name}  (not downloaded)")
+            else:
+                print(f"  [FAIL]  {src_file.name}  (see WARNINGS)")
 
     stats.copied += len(archive_files) + len(inbox_files)
 
@@ -342,6 +377,17 @@ def run(dry_run: bool) -> None:
         stats.warnings.append(msg)
 
     # ------------------------------------------------------------------
+    # Cloud-only report
+    # ------------------------------------------------------------------
+    if stats.cloud_only:
+        print(f"\n{'-'*60}")
+        print("=== CLOUD-ONLY FILES (not downloaded) ===\n")
+        for name in stats.cloud_only:
+            print(f"  [CLOUD] {name}")
+        print(f"\n  {len(stats.cloud_only)} files skipped (cloud-only).")
+        print("  Open them in Explorer first to download, then re-run.")
+
+    # ------------------------------------------------------------------
     # Warnings
     # ------------------------------------------------------------------
     if stats.warnings:
@@ -355,8 +401,9 @@ def run(dry_run: bool) -> None:
     # ------------------------------------------------------------------
     print(f"\n{'-'*60}")
     print(f"=== SUMMARY [{mode}] ===\n")
-    print(f"  Files to copy    : {stats.copied}")
+    print(f"  Files copied     : {stats.copied}")
     print(f"  Already present  : {stats.skipped}")
+    print(f"  Cloud-only skip  : {len(stats.cloud_only)}")
     print(f"  ZIPs to create   : {stats.zips_done}  ({stats.zipped_files} files inside)")
     print(f"  Warnings         : {len(stats.warnings)}")
     print(f"\n{'='*60}")
