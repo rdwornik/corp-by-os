@@ -1,20 +1,23 @@
 """
 Phase 2: Technical Presales — Copy + Rename Presentations
 
-Two-stage workflow:
-  1. Plan  (default): parses all 260 filenames (via Sonnet API or regex fallback),
-     writes plan JSON so you can review before touching any files.
-  2. Execute (--execute): reads the plan JSON and copies files with renamed targets.
+Workflow:
+  1. Plan  (default): AIClassifier parses all filenames (Sonnet API or regex),
+     builds per-client subfolder paths, resolves duplicates, saves plan JSON.
+  2. Execute (--execute): reads plan JSON, copies renamed files.
+  3. Diff   (--diff):     generates a fresh Sonnet plan and diffs against
+     the existing phase2_plan.json to show improvements.
+
+Destination:
+  MyWork/00_Tech_PreSales/80_Archive/Presentations_Delivered/
+    ClientName/
+      PRES_Description_YYYY-MM-DD[_v02].pptx
 
 Usage:
-    python scripts/phase2_presales_rename.py                     # create plan (uses Sonnet)
-    python scripts/phase2_presales_rename.py --no-api            # create plan (regex only, no API)
-    python scripts/phase2_presales_rename.py --execute           # copy per plan
-    python scripts/phase2_presales_rename.py --plan-file my.json # custom plan path
-    python scripts/phase2_presales_rename.py --plan-file my.json --execute
-
-Reads OneDrive path from CORP_ONEDRIVE_PATH env var (or .env).
-Plan is saved to scripts/phase2_plan.json by default.
+    python scripts/phase2_presales_rename.py              # plan via Sonnet
+    python scripts/phase2_presales_rename.py --no-api     # plan via regex
+    python scripts/phase2_presales_rename.py --diff       # diff old vs Sonnet
+    python scripts/phase2_presales_rename.py --execute    # copy per plan
 """
 
 import argparse
@@ -30,28 +33,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import get_settings
+from src.core.llm.classifier import AIClassifier, PlanEntry
 
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
-SOURCE_REL = "Projects/_Technical Presales/Presentations Delivered"
-DEST_REL   = "MyWork/00_Tech_PreSales/80_Archive/Presentations_Delivered"
+SOURCE_REL    = "Projects/_Technical Presales/Presentations Delivered"
+DEST_BASE_REL = "MyWork/00_Tech_PreSales/80_Archive/Presentations_Delivered"
 
 DEFAULT_PLAN = Path(__file__).parent / "phase2_plan.json"
 
-BATCH_SIZE = 40  # filenames per Sonnet call
-
 TYPE_MAP = {
-    ".pptx": "PRES",
-    ".pptm": "PRES",
-    ".ppt":  "PRES",
-    ".pdf":  "DOC",
-    ".docx": "DOC",
-    ".mp4":  "REC",
-    ".mkv":  "REC",
-    ".m4a":  "REC",
+    ".pptx": "PRES", ".pptm": "PRES", ".ppt": "PRES",
+    ".pdf":  "DOC",  ".docx": "DOC",  ".doc": "DOC",
+    ".mp4":  "REC",  ".mkv":  "REC",  ".m4a": "REC",
 }
 
 
@@ -60,419 +57,196 @@ TYPE_MAP = {
 # ---------------------------------------------------------------------------
 
 def lp(path: Path) -> str:
-    """Windows extended-length path string — bypasses 260-char MAX_PATH."""
+    """Windows extended-length path prefix."""
     return "\\\\?\\" + os.path.abspath(str(path))
 
 
 def mtime_date(path: Path) -> str:
-    """Return ISO date string from file modification time."""
-    ts = path.stat().st_mtime
-    return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+    return datetime.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
 
 
-def sanitize(text: str) -> str:
-    """
-    Convert arbitrary text to safe filename component.
-    Keeps letters, digits, underscores. Collapses runs.
-    """
-    import re
-    text = text.strip()
-    text = re.sub(r"[^A-Za-z0-9_]", "_", text)
-    text = re.sub(r"_+", "_", text)
-    text = text.strip("_")
-    return text
+def sanitize(text: str, max_len: int = 50) -> str:
+    s = re.sub(r"[^A-Za-z0-9]+", "_", text.strip())
+    return s.strip("_")[:max_len]
 
 
-def build_proposed_name(entry: dict, src_path: Path) -> str:
-    """Compose PRES_Client_Description_YYYY-MM-DD.ext from a plan entry."""
-    ext   = Path(entry["original"]).suffix.lower()
-    code  = TYPE_MAP.get(ext, "PRES")
-    client = sanitize(entry.get("client") or "Unknown")
-    desc   = sanitize(entry.get("description") or "Presentation")
-    date   = entry.get("date") or mtime_date(src_path)
-
-    # Basic validation: date must look like YYYY-MM-DD
-    import re
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        date = mtime_date(src_path)
-
-    return f"{code}_{client}_{desc}_{date}{ext}"
+def valid_iso(d: str | None) -> bool:
+    return bool(d and re.match(r"^\d{4}-\d{2}-\d{2}$", d))
 
 
-# ---------------------------------------------------------------------------
-# Sonnet parsing
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = """\
-You are a filename parser. Extract structured metadata from presentation filenames.
-Output only valid JSON — no markdown, no explanation."""
-
-PARSE_INSTRUCTIONS = """\
-Parse these presentation filenames. For each file, return JSON with:
-  - "original": exact original filename
-  - "client": company being presented to (PascalCase, underscores, max 3 words)
-  - "description": session type/topic (PascalCase, underscores, 2-4 words)
-  - "date": ISO date YYYY-MM-DD extracted from filename, or null
-
-Rules:
-- client = the CUSTOMER company, not Blue Yonder or BY
-- Strip leading "LOCAL " prefix (means EMEA delivery) — client is still the customer
-- "Mike's slides for Pfizer" → client=Pfizer
-- "BY presentation Bel" → client=Bel
-- "BY SaaS ACEHardware" → client=ACE_Hardware
-- "MIKES SLIDES ... Presentation to Yonderland" → client=Yonderland
-- If no customer identifiable (internal/generic) → client=Internal
-- description: pick best label from: Technical_Overview, RFP_Presentation,
-  Discovery_Workshop, Integration_Workshop, Technology_Session, Architecture_Review,
-  Platform_Demo, SaaS_Overview, Demo, Onboarding, or derive a short label
-- date patterns (all return YYYY-MM-DD):
-    "2022-09-14" or "2022 09 13" → 2022-09-14 / 2022-09-13
-    "20220810" → 2022-08-10
-    "22-06-27" or "22.06.27" → 2022-06-27
-    "24_03_22" → 2024-03-22
-    "24.01.22" or "11.02.2022" → 2022-01-24 / 2022-11-02  (DD.MM.YY / DD.MM.YYYY)
-    "06-29-2023" → 2023-06-29 (MM-DD-YYYY)
-    "April 2023" → 2023-04-01
-    "2023-11" → 2023-11-01
-    "20230209" → 2023-02-09
-    If no date found → null
-- Do NOT guess dates that are not explicitly in the filename
-
-Return a JSON array, one object per filename, same order as input.
-
-Filenames:
-"""
-
-
-# ---------------------------------------------------------------------------
-# Regex fallback parser
-# ---------------------------------------------------------------------------
-
-# Token-level noise words (matched case-insensitively against individual tokens)
-_NOISE_TOKENS = {
-    "blue", "yonder", "by", "saas", "technology", "technical", "platform",
-    "integration", "architecture", "presentation", "overview", "session",
-    "workshop", "rfp", "rfi", "rft", "demo", "discussion", "review",
-    "summary", "slides", "slide", "deck", "deepdive", "deep", "dive",
-    "followup", "follow", "solution", "discovery", "mikes",
-    "local", "geller", "mike", "v1", "v2", "v3", "v4", "v5",
-    "final", "copy", "updated", "template", "draft", "new", "old",
-    "for", "and", "the", "with", "from", "to", "in", "of", "at",
-    "lp", "ep", "ms", "emea", "amer", "apac",
-}
-
-# Month name → number
-_MONTHS = {
-    "january": "01", "february": "02", "march": "03", "april": "04",
-    "may": "05", "june": "06", "july": "07", "august": "08",
-    "september": "09", "october": "10", "november": "11", "december": "12",
-    "jan": "01", "feb": "02", "mar": "03", "apr": "04",
-    "jun": "06", "jul": "07", "aug": "08", "sep": "09",
-    "oct": "10", "nov": "11", "dec": "12",
-}
-
-
-def _extract_date_regex(stem: str) -> tuple[str | None, str]:
-    """
-    Try to find a date in stem. Returns (iso_date_or_None, stem_with_date_removed).
-    Tries patterns in order of specificity.
-    """
-    s = stem
-
-    # 1. YYYY-MM-DD or YYYY MM DD or YYYY_MM_DD (4-digit year first)
-    m = re.search(r'(\d{4})[\s._-](\d{2})[\s._-](\d{2})', s)
-    if m:
-        y, mo, d = m.group(1), m.group(2), m.group(3)
-        if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d}", s[:m.start()] + " " + s[m.end():]
-
-    # 2. YYYYMMDD (compact, 4-digit year)
-    m = re.search(r'(\d{4})(\d{2})(\d{2})', s)
-    if m:
-        y, mo, d = m.group(1), m.group(2), m.group(3)
-        if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d}", s[:m.start()] + " " + s[m.end():]
-
-    # 3. YY-MM-DD or YY.MM.DD or YY_MM_DD (2-digit year at start, e.g. 22-06-27, 24_03_22)
-    #    Use (?<!\d)/(?!\d) instead of \b to avoid underscore boundary issues
-    m = re.search(r'(?<!\d)(\d{2})[_\-.](\d{2})[_\-.](\d{2})(?!\d)', s)
-    if m:
-        a, b, c = m.group(1), m.group(2), m.group(3)
-        # Distinguish DD.MM.YY from YY.MM.DD:
-        if int(a) > 31:  # definitely a year prefix (e.g. "22" as 2022)
-            return f"20{a}-{b}-{c}", s[:m.start()] + " " + s[m.end():]
-        if int(c) > 31:  # c must be year suffix (DD.MM.YY European)
-            return f"20{c}-{b}-{a}", s[:m.start()] + " " + s[m.end():]
-        if int(b) > 12:  # b can't be month → YY-DD-MM unlikely; treat as YY-MM-DD
-            return f"20{a}-{b}-{c}", s[:m.start()] + " " + s[m.end():]
-        # Default: assume YY-MM-DD (year first — most common in this dataset)
-        return f"20{a}-{b}-{c}", s[:m.start()] + " " + s[m.end():]
-
-    # 4. DD.MM.YYYY or MM-DD-YYYY (4-digit year, dot or dash separated)
-    m = re.search(r'(\d{2})[.\-](\d{2})[.\-](\d{4})', s)
-    if m:
-        a, b, y = m.group(1), m.group(2), m.group(3)
-        if 2019 <= int(y) <= 2026:
-            if int(a) > 12:
-                # a can't be month → DD.MM.YYYY (European)
-                return f"{y}-{b}-{a}", s[:m.start()] + " " + s[m.end():]
-            if int(b) > 12:
-                # b can't be month → MM.DD.YYYY (American)
-                return f"{y}-{a}-{b}", s[:m.start()] + " " + s[m.end():]
-            # Ambiguous: default to DD.MM.YYYY (European — most common in this dataset)
-            if 1 <= int(a) <= 31 and 1 <= int(b) <= 12:
-                return f"{y}-{b}-{a}", s[:m.start()] + " " + s[m.end():]
-
-    # 5. DDMonYY or DDMonYYYY (e.g. "05Apr22", "20Oct22")
-    month_pat = '|'.join(_MONTHS.keys())
-    m = re.search(r'(\d{1,2})(' + month_pat + r')(\d{2,4})', s, re.IGNORECASE)
-    if m:
-        d, mon, yr = m.group(1), m.group(2), m.group(3)
-        mo = _MONTHS[mon.lower()[:3]]
-        y = f"20{yr}" if len(yr) == 2 else yr
-        if 2019 <= int(y) <= 2026 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d.zfill(2)}", s[:m.start()] + " " + s[m.end():]
-
-    # 6. Month name YYYY (e.g. "April 2023", "June 20th 2022")
-    m = re.search(
-        r'\b(' + month_pat + r')\w*\s+(?:\d{1,2}\w*\s+)?(\d{4})\b',
-        s, re.IGNORECASE,
-    )
-    if m:
-        mo = _MONTHS[m.group(1).lower()[:3]]
-        y = m.group(2)
-        return f"{y}-{mo}-01", s[:m.start()] + " " + s[m.end():]
-
-    # 7. YYYY-MM only (e.g. "2023-11")
-    m = re.search(r'\b(\d{4})-(\d{2})\b', s)
-    if m:
-        y, mo = m.group(1), m.group(2)
-        if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12:
-            return f"{y}-{mo}-01", s[:m.start()] + " " + s[m.end():]
-
-    return None, s
-
-
-def _tokenize(s: str) -> list[str]:
-    """Split on any non-alphanumeric-ampersand character into tokens."""
-    return [t for t in re.split(r'[^A-Za-z0-9&]+', s) if t]
-
-
-def _is_noise(token: str) -> bool:
-    return token.lower() in _NOISE_TOKENS or len(token) <= 1 or token.isdigit()
-
-
-def _extract_client_regex(stem: str) -> str:
-    """
-    Token-based client extraction.
-    Splits on underscores/spaces/dashes, filters noise, takes first meaningful tokens.
-    """
-    s = stem.strip()
-
-    # Strip leading "LOCAL " or "LOCAL_"
-    s = re.sub(r'^local[\s_]+', '', s, flags=re.IGNORECASE)
-
-    # "Mike's slides for <Client>" → explicit rule
-    m = re.search(
-        r"mike'?s\s+slides?\s+for\s+([A-Za-z][A-Za-z0-9&\s]+?)(?:\s*\d|\s*$)",
-        s, re.IGNORECASE,
-    )
-    if m:
-        return _to_pascal(m.group(1).strip())
-
-    # "Presentation to <Client>"
-    m = re.search(r'presentation\s+to\s+([A-Za-z][A-Za-z0-9&\s]+?)(?:\s|$)', s, re.IGNORECASE)
-    if m:
-        return _to_pascal(m.group(1).strip())
-
-    # "BY presentation <Client>" or "BY SaaS <Client>"
-    m = re.search(r'\bby\s+(?:presentation|saas|wms|tms|platform)\s+([A-Za-z]\w+)', s, re.IGNORECASE)
-    if m:
-        return m.group(1).capitalize()
-
-    # General: tokenize, filter noise, take first 1-2 meaningful tokens
-    tokens = _tokenize(s)
-    client_tokens = []
-    for tok in tokens:
-        if _is_noise(tok):
-            continue
-        if not re.match(r'^[A-Za-z0-9&]+$', tok):
-            continue
-        client_tokens.append(tok)
-        if len(client_tokens) == 2:
-            break
-
-    if not client_tokens:
-        return "Unknown"
-
-    return "_".join(t.capitalize() for t in client_tokens)
-
-
-def _extract_description_regex(stem: str) -> str:
-    """Classify session type from keywords in the filename stem."""
-    s = stem.lower()
-
-    if re.search(r'\brfp\b', s):
-        return "RFP_Presentation"
-    if re.search(r'\brfi\b|\brft\b', s):
-        return "RFI_Presentation"
-    if re.search(r'\bworkshop\b', s):
-        return "Workshop"
-    if re.search(r'\bdiscovery\b', s):
-        return "Discovery_Session"
-    if re.search(r'\bintegration\b', s):
-        return "Integration_Overview"
-    if re.search(r'\barchitecture\b', s):
-        return "Architecture_Review"
-    if re.search(r'\bdemo\b|\bdemonstration\b', s):
-        return "Demo"
-    if re.search(r'\bdeep.?dive\b', s):
-        return "Deep_Dive"
-    if re.search(r'\bfollow.?up\b', s):
-        return "Follow_Up"
-    if re.search(r'\bonboard\b', s):
-        return "Onboarding"
-    if re.search(r'\btraining\b', s):
-        return "Training"
-    return "Technical_Presentation"
-
-
-def _to_pascal(text: str) -> str:
-    """Convert 'some company name' to 'Some_Company_Name'."""
-    parts = re.split(r'[\s_-]+', text.strip())
-    return "_".join(p.capitalize() for p in parts if p)
-
-
-def parse_filename_regex(name: str) -> dict:
-    """
-    Pure-regex parsing. Extracts client, description, date.
-    Marks client='Unknown' when uncertain.
-    """
-    stem = Path(name).stem
-    date, stem_clean = _extract_date_regex(stem)
-    client      = _extract_client_regex(stem_clean)
-    description = _extract_description_regex(stem)
-
-    return {
-        "original":    name,
-        "client":      client,
-        "description": description,
-        "date":        date,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Sonnet batch parser
-# ---------------------------------------------------------------------------
-
-def parse_batch(filenames: list[str], llm) -> list[dict]:
-    """Call Sonnet for one batch of filenames. Returns list of dicts."""
-    from src.core.llm.sonnet import get_client as _get_client  # local import to allow --no-api
-
-    names_block = "\n".join(f"  {i+1}. {name}" for i, name in enumerate(filenames))
-    prompt = PARSE_INSTRUCTIONS + names_block
-
-    try:
-        result = llm.complete_json(prompt, system=SYSTEM_PROMPT, max_tokens=4096)
-    except Exception as e:
-        print(f"  [WARN] Sonnet error for batch: {type(e).__name__}: {e}")
-        return [parse_filename_regex(n) for n in filenames]
-
-    # Normalise: result may be a list or a dict with a "files" key
-    if isinstance(result, dict):
-        result = list(result.values())[0]
-    if not isinstance(result, list):
-        result = []
-
-    # Patch missing entries
-    while len(result) < len(filenames):
-        result.append(parse_filename_regex(filenames[len(result)]))
-
-    return result[:len(filenames)]
+def make_filename(type_code: str, description: str, date: str, ext: str) -> str:
+    return f"{type_code}_{sanitize(description)}_{date}{ext.lower()}"
 
 
 # ---------------------------------------------------------------------------
 # Plan building
 # ---------------------------------------------------------------------------
 
-def build_plan(src_dir: Path, dst_dir: Path, use_api: bool = True) -> list[dict]:
+def build_plan(
+    src_dir: Path,
+    dest_base: Path,
+    provider: str = "auto",
+) -> list[dict]:
     """
-    Scan src_dir, parse filenames (via Sonnet or regex), return plan list.
-    Each plan entry has: original, src, proposed_name, dst, client,
-    description, date, date_source, parse_method, status.
+    Classify all filenames and assemble plan entries.
+    Returns list of plain dicts (JSON-serialisable).
     """
     files = sorted(f for f in src_dir.iterdir() if f.is_file())
     print(f"  Found {len(files)} files in source folder")
 
-    filenames = [f.name for f in files]
-    parsed: list[dict] = []
+    clf     = AIClassifier(provider=provider)
+    results = clf.classify_filenames([f.name for f in files])
 
-    if use_api:
-        from src.core.llm.sonnet import get_client
-        llm = get_client()
-        batches = [filenames[i:i+BATCH_SIZE] for i in range(0, len(filenames), BATCH_SIZE)]
-        for batch_num, batch in enumerate(batches, 1):
-            print(f"  Calling Sonnet: batch {batch_num}/{len(batches)} ({len(batch)} files)...")
-            result = parse_batch(batch, llm)
-            parsed.extend(result)
-        parse_method = "sonnet"
-    else:
-        print(f"  Using regex parser (--no-api mode)...")
-        parsed = [parse_filename_regex(n) for n in filenames]
-        parse_method = "regex"
+    # Build raw entries (dst filled after duplicate resolution)
+    raw = []
+    for file, res in zip(files, results):
+        date      = res.date if valid_iso(res.date) else None
+        date_src  = "filename" if date else "mtime"
+        if not date:
+            date = mtime_date(file)
 
-    plan = []
-    for file, meta in zip(files, parsed):
-        date_source = "filename" if meta.get("date") else "mtime"
-        proposed    = build_proposed_name(meta, file)
-        entry = {
-            "original":      file.name,
-            "src":           str(file),
-            "proposed_name": proposed,
-            "dst":           str(dst_dir / proposed),
-            "client":        meta.get("client") or "Unknown",
-            "description":   meta.get("description") or "Presentation",
-            "date":          meta.get("date") or mtime_date(file),
-            "date_source":   date_source,
-            "parse_method":  parse_method,
-            "status":        "pending",
-        }
-        plan.append(entry)
+        raw.append({
+            "original":     file.name,
+            "src":          str(file),
+            "client":       (res.client or "_Unknown").strip() or "_Unknown",
+            "description":  (res.desc or "Technical_Presentation").strip(),
+            "date":         date,
+            "date_source":  date_src,
+            "ambig":        res.ambig,
+            "type":         TYPE_MAP.get(file.suffix.lower(), "PRES"),
+            "parse_method": res.parse_method,
+            "confidence":   res.confidence,
+            "status":       "pending",
+            "_ext":         file.suffix.lower(),
+        })
 
-    return plan
+    _assign_destinations(raw, dest_base)
+    return raw
+
+
+def _assign_destinations(entries: list[dict], dest_base: Path) -> None:
+    """
+    Set proposed_name and dst on each entry.
+    Appends _v02, _v03 … when (client, base_name) would collide.
+    """
+    seen: dict[str, int] = {}
+
+    for e in entries:
+        client   = sanitize(e["client"], max_len=50)
+        base     = make_filename(e["type"], e["description"], e["date"], e["_ext"])
+        key      = f"{client}/{base}"
+
+        count = seen.get(key, 0) + 1
+        seen[key] = count
+
+        if count > 1:
+            stem, ext2 = base.rsplit(".", 1)
+            base = f"{stem}_v{count:02d}.{ext2}"
+
+        e["proposed_name"] = base
+        e["dst"]           = str(dest_base / client / base)
+
+    for e in entries:
+        del e["_ext"]
 
 
 # ---------------------------------------------------------------------------
 # Plan display
 # ---------------------------------------------------------------------------
 
-def print_plan(plan: list[dict], dst_dir: Path) -> None:
-    """Print a readable summary of the plan."""
-    pending  = [e for e in plan if e["status"] == "pending"]
-    done     = [e for e in plan if e["status"] == "done"]
-    skipped  = [e for e in plan if e["status"] in ("skip", "exists")]
-    no_date  = [e for e in plan if e.get("date_source") == "mtime"]
-    unknown  = [e for e in plan if e.get("client") == "Unknown" or e.get("client") == "Internal"]
+def print_plan_summary(plan: list[dict], dest_base: Path) -> None:
+    pending    = sum(1 for e in plan if e["status"] == "pending")
+    no_date    = sum(1 for e in plan if e["date_source"] == "mtime")
+    ambig      = sum(1 for e in plan if e.get("ambig"))
+    unknown    = sum(1 for e in plan if e["client"] == "_Unknown")
+    clients    = len({e["client"] for e in plan if e["client"] != "_Unknown"})
+    dupes      = sum(1 for e in plan if "_v0" in e["proposed_name"])
+    low_conf   = sum(1 for e in plan if e.get("confidence") == "low")
 
-    print(f"\n  Total entries   : {len(plan)}")
-    print(f"  Pending copy    : {len(pending)}")
-    print(f"  Already done    : {len(done)}")
-    print(f"  Date from mtime : {len(no_date)}  (no date in filename)")
-    print(f"  Client=Unknown  : {len(unknown)}")
-    print(f"\n  Destination: {dst_dir}")
+    print(f"\n  Files            : {len(plan)}")
+    print(f"  Pending copy     : {pending}")
+    print(f"  Unique clients   : {clients}")
+    print(f"  Client=_Unknown  : {unknown}")
+    print(f"  Date from mtime  : {no_date}  (no date in filename)")
+    print(f"  Ambiguous dates  : {ambig}  (flag: check before --execute)")
+    print(f"  Duplicates       : {dupes}  (_v02 suffix added)")
+    print(f"  Low confidence   : {low_conf}")
+    print(f"\n  Destination base : {dest_base}")
 
-    print(f"\n{'  original':<55} {'proposed name'}")
-    print(f"  {'-'*54} {'-'*54}")
-    for e in plan[:50]:  # cap preview at 50 lines
-        orig  = e["original"][:54]
-        prop  = e["proposed_name"][:54]
-        mark  = " *" if e.get("date_source") == "mtime" else ""
-        print(f"  {orig:<55} {prop}{mark}")
-    if len(plan) > 50:
-        print(f"  ... ({len(plan) - 50} more entries — see plan JSON)")
+    print(f"\n{'  Original':<55} Client              Proposed name")
+    print(f"  {'-'*54} {'-'*19} {'-'*44}")
 
-    if no_date:
-        print(f"\n  (* = date taken from file mtime, not filename)")
+    for e in plan[:65]:
+        orig   = e["original"][:54]
+        client = e["client"][:19]
+        prop   = e["proposed_name"][:44]
+        flags  = ("!" if e.get("ambig") else "") + ("*" if e["date_source"] == "mtime" else "")
+        print(f"  {orig:<55} {client:<20} {prop}{flags}")
+
+    if len(plan) > 65:
+        print(f"  ... ({len(plan) - 65} more — see plan JSON)")
+
+    legend = []
+    if ambig:   legend.append("! = ambiguous date")
+    if no_date: legend.append("* = date from mtime")
+    if unknown: legend.append("_Unknown = client not identified")
+    if legend:
+        print("\n  " + "  |  ".join(legend))
+
+
+# ---------------------------------------------------------------------------
+# Diff: compare two plans
+# ---------------------------------------------------------------------------
+
+def diff_plans(old_path: Path, new_path: Path) -> None:
+    if not old_path.exists():
+        print(f"  Old plan not found: {old_path}")
+        return
+    if not new_path.exists():
+        print(f"  New plan not found: {new_path}")
+        return
+
+    old_entries = json.loads(old_path.read_text(encoding="utf-8"))
+    new_entries = json.loads(new_path.read_text(encoding="utf-8"))
+
+    old = {e["original"]: e for e in old_entries}
+    new = {e["original"]: e for e in new_entries}
+
+    all_files  = sorted(set(old) | set(new))
+    agree = differ = 0
+    diff_rows: list[tuple] = []
+
+    for fname in all_files:
+        oc = (old.get(fname) or {}).get("client", "MISSING")
+        nc = (new.get(fname) or {}).get("client", "MISSING")
+        if oc == nc:
+            agree += 1
+        else:
+            differ += 1
+            diff_rows.append((fname[:52], oc[:22], nc[:22]))
+
+    unk_old = sum(1 for e in old_entries if e["client"] in ("_Unknown", "MISSING"))
+    unk_new = sum(1 for e in new_entries if e["client"] in ("_Unknown", "MISSING"))
+    old_m   = (next(iter(old.values()), {}) or {}).get("parse_method", "old")
+    new_m   = (next(iter(new.values()), {}) or {}).get("parse_method", "new")
+
+    print(f"\n  Files compared      : {len(all_files)}")
+    print(f"  Agree on client     : {agree}")
+    print(f"  Client differs      : {differ}")
+    print(f"  Unknown ({old_m:<7}): {unk_old}")
+    print(f"  Unknown ({new_m:<7}): {unk_new}")
+    delta = unk_old - unk_new
+    print(f"  Delta unknown       : {delta:+d}  ({'new is better' if delta > 0 else 'no improvement' if delta == 0 else 'new is worse'})")
+
+    if diff_rows:
+        print(f"\n  {'Filename':<53} {old_m:<23} {new_m}")
+        print(f"  {'-'*52} {'-'*22} {'-'*22}")
+        for fname, oc, nc in diff_rows[:50]:
+            marker = "+" if nc != "_Unknown" and oc == "_Unknown" else (
+                     "-" if oc != "_Unknown" and nc == "_Unknown" else " ")
+            print(f"  {marker} {fname:<52} {oc:<23} {nc}")
+        if len(diff_rows) > 50:
+            print(f"  ... ({len(diff_rows) - 50} more differences — check new plan file)")
 
 
 # ---------------------------------------------------------------------------
@@ -481,14 +255,13 @@ def print_plan(plan: list[dict], dst_dir: Path) -> None:
 
 @dataclass
 class Stats:
-    copied: int = 0
+    copied:  int = 0
     skipped: int = 0
-    cloud: int = 0
-    errors: list[str] = field(default_factory=list)
+    cloud:   int = 0
+    errors:  list[str] = field(default_factory=list)
 
 
 def safe_copy(src: Path, dst: Path, stats: Stats) -> str:
-    """Copy with long-path support. Returns 'ok', 'cloud', or 'fail'."""
     try:
         os.makedirs(lp(dst.parent), exist_ok=True)
         shutil.copy2(lp(src), lp(dst))
@@ -502,35 +275,35 @@ def safe_copy(src: Path, dst: Path, stats: Stats) -> str:
 
 
 def execute_plan(plan: list[dict]) -> Stats:
-    """Copy files per plan. Updates plan entry status in-place."""
     stats = Stats()
-
-    for entry in plan:
-        if entry["status"] in ("done", "skip"):
+    for e in plan:
+        if e["status"] in ("done", "skip"):
             stats.skipped += 1
             continue
 
-        src = Path(entry["src"])
-        dst = Path(entry["dst"])
+        src = Path(e["src"])
+        dst = Path(e["dst"])
 
         if dst.exists() and dst.stat().st_size == src.stat().st_size:
-            entry["status"] = "exists"
+            e["status"] = "exists"
             stats.skipped += 1
-            print(f"  [SKIP]  {entry['proposed_name']}")
+            print(f"  [SKIP]  {e['proposed_name']}")
             continue
 
         result = safe_copy(src, dst, stats)
+        client_dir = Path(e["dst"]).parent.name
+
         if result == "ok":
-            entry["status"] = "done"
+            e["status"] = "done"
             stats.copied += 1
-            print(f"  [COPY]  {entry['original']}")
-            print(f"      ->  {entry['proposed_name']}")
+            print(f"  [COPY]  {e['original']}")
+            print(f"      ->  {client_dir}/{e['proposed_name']}")
         elif result == "cloud":
-            entry["status"] = "cloud"
-            print(f"  [CLOUD] {entry['original']}  (not downloaded)")
+            e["status"] = "cloud"
+            print(f"  [CLOUD] {e['original']}  (not downloaded)")
         else:
-            entry["status"] = "error"
-            print(f"  [FAIL]  {entry['original']}  (see WARNINGS)")
+            e["status"] = "error"
+            print(f"  [FAIL]  {e['original']}  (see WARNINGS)")
 
     return stats
 
@@ -539,68 +312,94 @@ def execute_plan(plan: list[dict]) -> Stats:
 # Main runner
 # ---------------------------------------------------------------------------
 
-def run(dry_run: bool, plan_file: Path, use_api: bool = True) -> None:
-    settings = get_settings()
-    onedrive = settings.onedrive_path
-    src_dir  = onedrive / SOURCE_REL
-    dst_dir  = onedrive / DEST_REL
+def run(args: argparse.Namespace) -> None:
+    settings  = get_settings()
+    onedrive  = settings.onedrive_path
+    src_dir   = onedrive / SOURCE_REL
+    dest_base = onedrive / DEST_BASE_REL
+    plan_file: Path = args.plan_file
+    provider  = "regex" if args.no_api else "auto"
 
-    mode = "PLAN" if dry_run else "EXECUTE"
-    parser_label = "Sonnet" if use_api else "regex"
-    print(f"\n{'='*60}")
-    print(f"Phase 2: Presales Rename  [{mode}]  (parser: {parser_label})")
-    print(f"Source : {src_dir}")
-    print(f"Dest   : {dst_dir}")
-    print(f"Plan   : {plan_file}")
-    print(f"{'='*60}")
+    # ------------------------------------------------------------------
+    # DIFF mode
+    # ------------------------------------------------------------------
+    if args.diff:
+        new_plan_path = plan_file.parent / "phase2_plan_new.json"
+        print(f"\n{'='*60}")
+        print(f"Phase 2: Diff  [{provider}]")
+        print(f"  Old: {plan_file}")
+        print(f"  New: {new_plan_path}")
+        print(f"{'='*60}")
 
-    if not src_dir.exists():
-        print(f"\nERROR: source not found: {src_dir}")
-        print("Set CORP_ONEDRIVE_PATH in your .env file.")
-        sys.exit(1)
+        if not src_dir.exists():
+            print(f"\nERROR: source not found: {src_dir}")
+            sys.exit(1)
+
+        print(f"\n--- Building new plan ---\n")
+        new_plan = build_plan(src_dir, dest_base, provider=provider)
+        new_plan_path.write_text(
+            json.dumps(new_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"\n  New plan saved to: {new_plan_path}")
+
+        print("\n--- Diff ---")
+        diff_plans(plan_file, new_plan_path)
+
+        print(f"\nTo adopt: rename {new_plan_path.name} -> {plan_file.name}")
+        return
 
     # ------------------------------------------------------------------
     # PLAN mode
     # ------------------------------------------------------------------
-    if dry_run:
-        label = "calling Sonnet" if use_api else "regex only, no API"
-        print(f"\n--- Building plan ({label}) ---\n")
-        plan = build_plan(src_dir, dst_dir, use_api=use_api)
+    if not args.execute:
+        print(f"\n{'='*60}")
+        print(f"Phase 2: Plan  [{provider}]")
+        print(f"  Source    : {src_dir}")
+        print(f"  Dest base : {dest_base}")
+        print(f"  Plan file : {plan_file}")
+        print(f"{'='*60}")
 
-        print("\n--- Plan preview ---")
-        print_plan(plan, dst_dir)
+        if not src_dir.exists():
+            print(f"\nERROR: source not found: {src_dir}")
+            sys.exit(1)
+
+        print(f"\n--- Classifying filenames ---\n")
+        plan = build_plan(src_dir, dest_base, provider=provider)
+
+        print("\n--- Plan summary ---")
+        print_plan_summary(plan, dest_base)
 
         plan_file.parent.mkdir(parents=True, exist_ok=True)
-        plan_file.write_text(json.dumps(plan, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"\nPlan saved to: {plan_file}")
-        print("\nReview the plan JSON, edit client/description/date if needed,")
-        print("then run with --execute to copy files.")
+        plan_file.write_text(
+            json.dumps(plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"\nPlan saved: {plan_file}")
+        print("Review / edit (fix ambig!, unknown clients?),")
+        print("then run with --execute.")
         return
 
     # ------------------------------------------------------------------
     # EXECUTE mode
     # ------------------------------------------------------------------
+    print(f"\n{'='*60}")
+    print(f"Phase 2: Execute")
+    print(f"  Plan: {plan_file}")
+    print(f"{'='*60}")
+
     if not plan_file.exists():
-        print(f"\nERROR: plan file not found: {plan_file}")
-        print("Run without --execute first to create the plan.")
+        print(f"\nERROR: plan not found: {plan_file}")
+        print("Run without --execute first.")
         sys.exit(1)
 
     plan = json.loads(plan_file.read_text(encoding="utf-8"))
-    print(f"\nLoaded plan: {len(plan)} entries")
-
     pending = sum(1 for e in plan if e["status"] not in ("done", "skip", "exists"))
-    print(f"Pending    : {pending}")
+    print(f"\nLoaded {len(plan)} entries, {pending} pending\n")
 
-    dst_dir.mkdir(parents=True, exist_ok=True)
-
-    print("\n--- Copying files ---\n")
     stats = execute_plan(plan)
-
-    # Save updated plan (with status changes)
     plan_file.write_text(json.dumps(plan, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if stats.errors:
-        print(f"\n--- WARNINGS ---")
+        print("\n--- WARNINGS ---")
         for w in stats.errors:
             print(f"  {w}")
 
@@ -619,26 +418,27 @@ def run(dry_run: bool, plan_file: Path, use_api: bool = True) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phase 2: Copy + rename presentations into MyWork structure."
+        description="Phase 2: Copy + rename presentations with AI classification."
     )
     parser.add_argument(
-        "--execute",
-        action="store_true",
-        help="Actually copy files (default is plan/dry-run mode)",
+        "--execute", action="store_true",
+        help="Copy files per plan JSON",
     )
     parser.add_argument(
-        "--no-api",
-        action="store_true",
-        help="Use regex parser only, skip Sonnet API calls",
+        "--no-api", action="store_true",
+        help="Use regex parser instead of Sonnet API",
     )
     parser.add_argument(
-        "--plan-file",
-        type=Path,
-        default=DEFAULT_PLAN,
-        help=f"Path to plan JSON file (default: {DEFAULT_PLAN})",
+        "--diff", action="store_true",
+        help="Generate fresh Sonnet plan and diff against existing plan",
+    )
+    parser.add_argument(
+        "--plan-file", type=Path, default=DEFAULT_PLAN,
+        metavar="PATH",
+        help=f"Plan JSON path (default: {DEFAULT_PLAN})",
     )
     args = parser.parse_args()
-    run(dry_run=not args.execute, plan_file=args.plan_file, use_api=not args.no_api)
+    run(args)
 
 
 if __name__ == "__main__":

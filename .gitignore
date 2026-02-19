@@ -30,7 +30,8 @@ Thumbs.db
 *.sqlite
 index/
 cache/
-logs/
+logs/*
+!logs/.gitkeep
 
 # Large files
 *.mkv
