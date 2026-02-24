@@ -50,10 +50,13 @@ class Settings(BaseSettings):
     # LLM
     # ===================
     claude_model: str = "claude-sonnet-4-20250514"
+    haiku_model: str = "claude-haiku-4-5-20251001"
+    deepseek_model: str = "deepseek-chat"
     gemini_model: str = "gemini-1.5-pro"
-    
+
     # API Keys (from .env)
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
+    deepseek_api_key: Optional[str] = Field(default=None, alias="DEEPSEEK_API_KEY")
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     graph_access_token: Optional[str] = Field(default=None, alias="GRAPH_ACCESS_TOKEN")
     
