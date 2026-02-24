@@ -318,7 +318,7 @@ def run(args: argparse.Namespace) -> None:
     src_dir   = onedrive / SOURCE_REL
     dest_base = onedrive / DEST_BASE_REL
     plan_file: Path = args.plan_file
-    provider  = "regex" if args.no_api else "auto"
+    provider  = "regex" if args.no_api else "deepseek"
 
     # ------------------------------------------------------------------
     # DIFF mode
