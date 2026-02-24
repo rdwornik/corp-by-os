@@ -2,17 +2,24 @@
 AIClassifier — provider-agnostic filename classification.
 
 Uses PromptTemplate to load the prompt YAML and PromptLogger to record every
-AI call. Falls back to regex when the API is unavailable.
+AI call. Implements a fallback chain so the best available provider is used.
 
-Supported providers (auto-selected based on availability):
-  "sonnet"  — Anthropic claude-sonnet-4-20250514 via SDK
-  "regex"   — pure-regex heuristic (no API, lower quality)
+Fallback chain (auto mode):
+  1. deepseek  — DeepSeek-V3 via REST (cheapest, fast)
+  2. haiku     — claude-haiku-4-5 via Anthropic SDK
+  3. regex     — pure-regex heuristic (no API, lower quality)
+
+Supported providers:
+  "deepseek" — DeepSeek-V3 (deepseek-chat)
+  "haiku"    — Anthropic claude-haiku-4-5
+  "sonnet"   — Anthropic claude-sonnet-4 (legacy, still works)
+  "regex"    — pure-regex heuristic (no API)
 
 Usage:
     from src.core.llm.classifier import AIClassifier
-    clf = AIClassifier()
+    clf = AIClassifier()                  # deepseek → haiku → regex
+    clf = AIClassifier(provider="haiku")  # haiku → regex
     results = clf.classify_filenames(filenames)
-    # returns list of ClassificationResult
 """
 
 import json
@@ -29,6 +36,9 @@ from src.core.prompts import PromptTemplate, PromptLogger
 logger = logging.getLogger(__name__)
 
 PROMPT_NAME = "classify_presentation"
+
+# Provider resolution order (most preferred first)
+PROVIDER_CHAIN = ["deepseek", "haiku", "sonnet", "regex"]
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +122,7 @@ def _regex_date(stem: str):
         if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
             return f"{y}-{mo}-{d}", False, s[:m.start()] + " " + s[m.end():]
 
-    m = re.search(r"(?<!\d)(\d{2})[_\-.](\d{2})[_\-.](\d{2})(?!\d)", s)
+    m = re.search(r"(?<!\d)(\d{2})[_\-.](\\d{2})[_\-.](\\d{2})(?!\d)", s)
     if m:
         a, b, c = m.groups()
         if int(a) > 31:
@@ -214,13 +224,17 @@ def regex_classify(name: str) -> ClassificationResult:
 
 class AIClassifier:
     """
-    Provider-agnostic filename classifier.
+    Provider-agnostic filename classifier with fallback chain.
+
+    Fallback chain (when provider="deepseek"):
+      deepseek → haiku → regex
 
     Loads the 'classify_presentation' prompt from YAML, sends filenames to
     the configured LLM, logs every call to prompt_history.jsonl.
 
     Args:
-        provider:   "sonnet" or "regex" (auto-detected if not specified)
+        provider:   Starting provider ("deepseek", "haiku", "sonnet", "regex").
+                    Falls back down the chain if unavailable.
         log_path:   override default log path
         batch_size: filenames per API call (default 150)
     """
@@ -229,34 +243,92 @@ class AIClassifier:
 
     def __init__(
         self,
-        provider: str = "auto",
+        provider: str = "deepseek",
         log_path: Path | None = None,
         batch_size: int = BATCH_SIZE,
     ):
         self.batch_size = batch_size
         self.prompt = PromptTemplate.load(PROMPT_NAME)
-        self.plog   = PromptLogger(log_path or PromptLogger.__init__.__defaults__[0])  # default path
         self.plog   = PromptLogger() if log_path is None else PromptLogger(log_path)
 
         self.provider = self._resolve_provider(provider)
         self._llm = None  # lazy-loaded
 
+    # ------------------------------------------------------------------
+    # Provider resolution
+    # ------------------------------------------------------------------
+
     def _resolve_provider(self, requested: str) -> str:
+        """
+        Walk the fallback chain starting from `requested`.
+        Returns the first provider whose client can be instantiated.
+        """
         if requested == "regex":
             return "regex"
+
+        # Build chain starting from requested
+        start = PROVIDER_CHAIN.index(requested) if requested in PROVIDER_CHAIN else 0
+        chain = PROVIDER_CHAIN[start:]
+
+        for provider in chain:
+            if provider == "regex":
+                return "regex"
+            if self._can_use_provider(provider):
+                if provider != requested:
+                    logger.warning(
+                        "%s unavailable, falling back to %s", requested, provider
+                    )
+                return provider
+
+        return "regex"
+
+    def _can_use_provider(self, provider: str) -> bool:
+        """Try to instantiate the provider's client. Return True if OK."""
         try:
-            from src.core.llm.sonnet import get_client as _gc
-            _gc()  # will raise if ANTHROPIC_API_KEY missing
-            return "sonnet"
+            if provider == "deepseek":
+                from src.core.llm.deepseek import get_client as _gc
+                _gc()
+                return True
+            if provider == "haiku":
+                from src.core.llm.haiku import get_client as _gc
+                _gc()
+                return True
+            if provider == "sonnet":
+                from src.core.llm.sonnet import get_client as _gc
+                _gc()
+                return True
+            return False
         except Exception:
-            logger.warning("Sonnet unavailable, falling back to regex")
-            return "regex"
+            return False
+
+    # ------------------------------------------------------------------
+    # LLM client
+    # ------------------------------------------------------------------
 
     def _get_llm(self):
         if self._llm is None:
-            from src.core.llm.sonnet import get_client
-            self._llm = get_client()
+            if self.provider == "deepseek":
+                from src.core.llm.deepseek import get_client
+                self._llm = get_client()
+            elif self.provider == "haiku":
+                from src.core.llm.haiku import get_client
+                self._llm = get_client()
+            else:
+                from src.core.llm.sonnet import get_client
+                self._llm = get_client()
         return self._llm
+
+    def _actual_model(self) -> str:
+        if self.provider == "regex":
+            return "regex"
+        try:
+            return self._get_llm().model_id
+        except Exception:
+            return self.prompt.model
+
+    # ------------------------------------------------------------------
+    # Classification
+    # ------------------------------------------------------------------
 
     def classify_filenames(self, filenames: list[str]) -> list[ClassificationResult]:
         """
@@ -288,7 +360,6 @@ class AIClassifier:
 
         try:
             llm = self._get_llm()
-            # Use complete() directly so we capture raw text for logging
             raw_output = llm.complete(
                 rendered,
                 system="You parse presentation filenames. Output ONLY valid JSON array.",
@@ -307,7 +378,7 @@ class AIClassifier:
         self.plog.log(
             prompt_name=self.prompt.name,
             prompt_version=self.prompt.version,
-            model=self.prompt.model,
+            model=self._actual_model(),
             provider=self.provider,
             rendered_prompt=rendered,
             raw_output=raw_output,

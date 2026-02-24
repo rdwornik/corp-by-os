@@ -32,6 +32,10 @@ class SonnetClient:
         self._model = settings.claude_model
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
+    @property
+    def model_id(self) -> str:
+        return self._model
+
     def complete(
         self,
         prompt: str,
