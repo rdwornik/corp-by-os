@@ -1,13 +1,13 @@
 # Corporate OS - Project Context
 
 > This file is the source of truth. Read at the start of every session (UI or Claude Code).
-> Last updated: 2025-01-15
+> Last updated: 2026-02-18
 
 ---
 
 ## What is this project
 
-Automation system for Technical Pre-Sales at Blue Yonder. File organization, recording processing, knowledge management, meeting briefs.
+Automation system for Technical Pre-Sales at Blue Yonder. Goal: migrate entire OneDrive to clean MyWork structure, then build agents for file organization, recording processing, and knowledge management.
 
 **Owner:** Rob (Technical Pre-Sales Engineer, Blue Yonder, Poland)
 
@@ -29,63 +29,59 @@ OneDrive - Blue Yonder/
     │   │   ├── recordings/
     │   │   ├── documents/
     │   │   └── emails/
-    │   ├── 10_Projects/           ← Active opportunities
-    │   │   ├── _template/
-    │   │   └── Company_Solution/
+    │   ├── 10_Projects/           ← Active opportunities (Company_Solution per deal)
     │   ├── 20_Knowledge/
     │   ├── 30_Templates/
-    │   ├── 80_Archive/            ← Archive INSIDE role
-    │   │   ├── 2023/
-    │   │   ├── 2024/
-    │   │   └── 2025/
+    │   │   ├── emails/
+    │   │   ├── presentations/
+    │   │   └── rfp/
+    │   ├── 80_Archive/            ← Archive INSIDE role (YYYY/)
     │   └── 90_System/
     │
-    ├── Archive_BDR/               ← Past role
-    └── Archive_TechnicalConsultant/
+    ├── Archive_BDR/
+    ├── Archive_TechnicalConsultant/
+    ├── Archive_SalesAcademy/
+    │   ├── Academy_2020_TC/
+    │   ├── Academy_2021_Mentor/
+    │   └── Academy_2022_Sales/
+    ├── Archive_ExtraInitiatives/
+    │   └── Marketing/
+    ├── Archive_Admin/
+    └── Camera_Roll/
 ```
-
-**Why:**
-- Archive inside role = full context when role changes
-- Projects = `Company_Solution` (flat list, not nested)
-- 30-40 opportunities/year - must be scalable
 
 ### 2. File Naming Convention
 
 ```
-[TYPE]_[Description]_[YYYY-MM-DD]_[vNN].ext
+TYPE_Description_YYYY-MM-DD[_vNN].ext
 ```
 
 | Element | Format | Example |
 |---------|--------|---------|
-| TYPE | PascalCase | `MeetingNotes`, `Presentation`, `Recording` |
+| TYPE | SHORT_CAPS | `PRES`, `DOC`, `RFP`, `NOTES`, `REC`, `DATA`, `EMAIL`, `IMG` |
 | Description | PascalCase with `_` | `Discovery_Workshop`, `Technical_Review` |
 | Date | ISO with dash | `2025-01-15` |
-| Version | `_vNN` | `_v01`, `_v02` (optional) |
+| Version | `_vNN` (optional) | `_v01`, `_v02` |
 | Separator | `_` underscore | Always |
 
-**File types:**
-- `MeetingNotes` - meeting notes
-- `Recording` - audio/video recordings
-- `Transcript` - transcriptions
-- `Presentation` - PPT files
-- `Document` - Word docs, reports
-- `RFP` - RFP documents
-- `Email` - saved emails
-- `Screenshot` - screenshots
-- `Diagram` - architecture diagrams
+**File type codes:**
+- `PRES` — presentations (.pptx)
+- `DOC` — Word docs, reports (.docx, .pdf)
+- `RFP` — RFP documents
+- `NOTES` — meeting notes (.md, .docx)
+- `REC` — audio/video recordings (.mkv, .m4a, .mp4)
+- `DATA` — spreadsheets, data files (.xlsx, .csv)
+- `EMAIL` — saved emails
+- `IMG` — images, diagrams
 
 **Examples:**
 ```
-MeetingNotes_Discovery_Workshop_2025-01-15.md
-Presentation_Architecture_Overview_2025-01-18_v02.pptx
-Recording_Technical_Review_2025-01-20.mkv
+PRES_Honda_PALOMA_Discovery_2025-01-15.pptx
+DOC_Architecture_Overview_2025-01-18_v02.docx
+REC_Technical_Review_2025-01-20.mkv
 RFP_Response_Final_2025-01-28_v03.docx
+NOTES_Discovery_Workshop_2025-01-15.md
 ```
-
-**Why type first:**
-- Sort by type = all MeetingNotes together
-- Within type = chronological (date at end)
-- Easy filtering in file explorer
 
 ### 3. Project Naming
 
@@ -93,20 +89,12 @@ RFP_Response_Final_2025-01-28_v03.docx
 Company_Solution
 ```
 
-**Examples:**
-- `Honda_PALOMA`
-- `PepsiCo_EMEA`
-- `NEOM_WMS`
-- `Corning_Planning`
-
-**Why:**
-- No dates in folder name (too many projects)
-- Archive entire folder to `80_Archive/YYYY/`
+**Examples:** `Honda_PALOMA`, `PepsiCo_EMEA`, `NEOM_WMS`, `Corning_Planning`
 
 ### 4. Repository Location
 
 ```
-C:\Dev\corporate-os\    ← OUTSIDE OneDrive (hidden from IT admin)
+C:\os\corporate-os\    ← OUTSIDE OneDrive
 ```
 
 ### 5. Separators
@@ -123,26 +111,94 @@ C:\Dev\corporate-os\    ← OUTSIDE OneDrive (hidden from IT admin)
 
 ## Technical Architecture
 
-### LLM Routing
+### LLM
+
+- **Primary:** Claude Sonnet 4 API (claude-sonnet-4-20250514)
+- **Large files:** Gemini CLI (for reading big documents locally)
+- **No Ollama** — dropped (too slow on CPU, poor quality)
+- **No hybrid routing** — no sensitivity check, no multi-provider router
+
+### Simple Client
 
 ```
-┌─────────────────┐
-│  Sensitivity    │  ← ALWAYS local (Ollama)
-│  Check          │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ RESTRICTED/HIGH │──→ Ollama (local)
-│ MEDIUM/LOW      │──→ Claude/Gemini (cloud)
-└─────────────────┘
+src/core/llm/sonnet.py   ← single entry point
 ```
 
-### Providers
+Methods: `complete(prompt, system)`, `complete_json(prompt, schema)`
 
-- **Local:** Ollama (llama3.2, mistral, nomic-embed-text)
-- **Cloud:** Claude (Sonnet), Gemini (Pro)
-- **Embeddings:** Always local (nomic-embed-text)
+### Code Standards
+
+- Python, clean code, type hints
+- `.env` for all secrets and paths (no hardcoded values)
+- YAML for configs
+- Pydantic for settings
+- **Dry-run by default** on all destructive operations
+- Git commits after every meaningful change
+
+---
+
+## Migration — Locked Decisions
+
+| # | Decision |
+|---|----------|
+| 1 | ALL operations are COPY, not MOVE. Originals stay until migration confirmed. |
+| 2 | Unclassifiable files → `00_Inbox/` |
+| 3 | Old role archives → copy as-is, zero rename |
+| 4 | Short file type codes: PRES, DOC, RFP, NOTES, REC, DATA, EMAIL, IMG |
+| 5 | Naming: `TYPE_Description_YYYY-MM-DD[_vNN].ext` |
+| 6 | Rename only local files. SharePoint copies stay as-is. |
+| 7 | Knowledge Hub — deferred |
+| 8 | Teams Chat Files (405) — triage with AI, extract valuable ones to MyWork |
+| 9 | Pictures/Screenshots (1,389) — DELETE. Camera Roll (796) — KEEP. |
+| 10 | Repo: clean structure, no Ollama, migration scripts in `scripts/` |
+
+---
+
+## Migration Phases
+
+### Phase 0: Delete screenshots
+- `Pictures/Screenshots/` → DELETE (1,389 files)
+
+### Phase 1: Archives — COPY as-is (no rename)
+
+| Source | Destination |
+|--------|-------------|
+| `Projects/_Academy 2020 TC/` | `MyWork/Archive_SalesAcademy/Academy_2020_TC/` |
+| `Projects/_Academy 2021 Mentor/` | `MyWork/Archive_SalesAcademy/Academy_2021_Mentor/` |
+| `Projects/_Academy 2022 Sales/` | `MyWork/Archive_SalesAcademy/Academy_2022_Sales/` |
+| `Projects/_Inbound BDR/` | `MyWork/Archive_BDR/` |
+| `Projects/_Technical Consultant/` | `MyWork/Archive_TechnicalConsultant/` |
+| `Projects/_BY Extra Initiatives/` | `MyWork/Archive_ExtraInitiatives/` |
+| `Projects/_BY Admin/` | `MyWork/Archive_Admin/` |
+| `Projects/Marketing/` | `MyWork/Archive_ExtraInitiatives/Marketing/` |
+| `Pictures/Camera Roll/` | `MyWork/Camera_Roll/` |
+| `Recordings/` (old 2021-2022) | `MyWork/Archive_TechnicalConsultant/Recordings/` |
+
+### Phase 2: Technical Presales — COPY + RENAME
+- Source: `Projects/_Technical Presales/`
+- Presentations (260 pptx): parse filename → extract client + date → `PRES_Description_YYYY-MM-DD.pptx`
+- Other subfolders: Demo Scripts, RFPs, Knowledge → classify with Sonnet API
+
+### Phase 3: Teams Chat Files — AI TRIAGE
+- 405 files, mixed content
+- AI classifies: keep (+ destination) or discard
+- Output CSV for review before execution
+
+### Phase 4: Remaining folders
+- Attachments, Saved Emails, Meetings, Tmp, Zoom
+- Small batches, semi-manual
+
+### Phase 5: Knowledge Hub — LATER (deferred)
+
+---
+
+## OneDrive Base Path
+
+```
+C:\Users\1028120\OneDrive - Blue Yonder\
+```
+
+Set via env var `CORP_ONEDRIVE_PATH`.
 
 ---
 
@@ -151,79 +207,40 @@ C:\Dev\corporate-os\    ← OUTSIDE OneDrive (hidden from IT admin)
 ### Done
 - [x] Folder architecture designed
 - [x] Naming convention established
-- [x] Repo initialized (C:\Dev\corporate-os)
-- [x] Settings.py with correct paths
-- [x] LLM Router with sensitivity check
-- [x] Providers: Ollama, Claude, Gemini
-- [x] OneDrive folders created (setup_mywork.ps1)
+- [x] Repo initialized and pushed to GitHub (https://github.com/rdwornik/-corporate-os)
+- [x] Settings.py with Pydantic
+- [x] Branch v2-migration created
+- [x] Removed: Ollama provider, sensitivity checker, hybrid LLM router
+- [x] Created: Sonnet API client (src/core/llm/sonnet.py)
+- [x] Phase 1: Archive copy complete (496 copied, 2832 already present, 3 ZIPs created)
+      Script: scripts/phase1_archive_copy.py
 
 ### In Progress
-- [ ] Test Ollama connection
-- [ ] pip install -e .
+- [ ] Phase 2: Technical Presales rename
+      Script: scripts/phase2_presales_rename.py
+      Plan: scripts/phase2_plan.json (261 files, regex-parsed, ready to review)
+      Status: plan generated, needs Sonnet API credits for full refinement,
+              then --execute to copy
 
 ### To Do
-- [ ] Copy PROJECT_CONTEXT.md to repo
-- [ ] Vector Store (Chroma wrapper)
-- [ ] FileOrganizer agent (dry-run reorganization)
-- [ ] Migrate from Knowledge Hub to new structure
-- [ ] Inbox Agent (process 00_Inbox)
-- [ ] Search Agent
-- [ ] Brief Agent
-
----
-
-## Open Questions
-
-1. **Ollama** - which models installed? Is it running?
-2. **API keys** - ready? (Anthropic, Google, Graph)
-3. **Existing recordings** - how many? Where? (mentioned 30+ .mkv)
-4. **Knowledge Hub** - what to migrate first?
+- [ ] Phase 0: Delete screenshots script
+- [ ] Phase 3: Teams Chat triage script
+- [ ] FileOrganizer agent (v2, Sonnet-based)
+- [ ] Inbox Agent
+- [ ] Knowledge Hub (deferred)
 
 ---
 
 ## How We Work
 
-### Claude UI (this interface)
-- Planning, architecture
-- Discussion, feedback
-- Document analysis
-- Decisions requiring research
+### Claude UI
+- Planning, architecture, discussion, decisions
 
 ### Claude Code (CLI)
-- Code implementation
-- Debugging, testing
-- Git operations
-- File migration
-- Multi-file work
+- Code implementation, git, file migration, multi-file work
 
 ### Principles
-1. **Dry-run** always before changes
-2. **Commit** regularly
-3. **Challenge** - question decisions mutually
-4. **Research** - key decisions get consulted (web search, multi-LLM)
-
----
-
-## Context from Previous Sessions
-
-### Transcripts
-- V1-V3 architecture design
-- V4 folder structure refinement
-- Naming convention research and decision
-
-### Rob's Existing Projects (to integrate)
-- corporate-knowledge-extractor - recordings to reports pipeline
-- sca-time-automation - time tracking from Outlook
-- rfp-agent-cognitive-planning - RFP processing
-
----
-
-## Next Session
-
-**Priority:** FileOrganizer agent
-1. Scan folder structure
-2. Analyze content (local LLM)
-3. Propose new names (dry-run)
-4. After approval - move/rename
-
-**Start:** Claude Code in C:\Dev\corporate-os
+1. **Dry-run** always before destructive changes
+2. **Commit** regularly (after each meaningful change)
+3. **Challenge** — question decisions mutually
+4. **COPY not MOVE** — originals stay until confirmed

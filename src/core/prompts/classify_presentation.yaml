@@ -1,0 +1,63 @@
+name: classify_presentation
+version: "1.1"
+description: >
+  Extract client name, date, description and type from Blue Yonder pre-sales
+  presentation filenames. Returns a JSON array in the same order as input.
+model: claude-sonnet-4-20250514
+max_tokens: 8192
+variables:
+  - name: n
+    description: Number of filenames in the batch
+  - name: filenames
+    description: Numbered list of filenames (one per line)
+
+template: |
+  Parse these {n} presentation filenames from a Blue Yonder Technical Pre-Sales
+  engineer's OneDrive. Return a JSON array — one object per filename, SAME ORDER
+  as the input. No markdown, no explanation.
+
+  Each object must have exactly these fields:
+    "client"     : string | null  — the CUSTOMER company (PascalCase, max 3 words)
+    "date"       : string | null  — ISO date YYYY-MM-DD from filename; null if absent
+    "ambig"      : boolean        — true when date format is ambiguous
+    "desc"       : string         — session type 2-4 words PascalCase underscores
+    "type"       : "PRES"|"DOC"|"REC"
+    "confidence" : "high"|"medium"|"low"  — how certain you are about client + date
+
+  === CLIENT rules ===
+  - client = the CUSTOMER company being presented to; never Blue Yonder / BY
+  - BY products are NOT clients: TMS, WMS, DMS, OMS, SCPO, F&R, IBP, CatMan, DSP
+  - Strip "LOCAL" prefix (= EMEA delivery; client is still the customer)
+  - "Mike's slides for Pfizer"            → Pfizer
+  - "BY presentation Bel"                 → Bel
+  - "BY SaaS ACEHardware"                 → ACE_Hardware
+  - "Presentation to Yonderland"          → Yonderland
+  - "Biedronka ... for Biedronka"         → Biedronka  (no duplicate)
+  - null ONLY when no customer is identifiable (pure internal / generic template)
+
+  === DATE rules ===
+  - Extract ONLY dates that are EXPLICITLY in the filename — do NOT guess
+  - null means no date found (mtime will be used as fallback externally)
+  - Patterns → YYYY-MM-DD:
+      "2022-09-14", "2022 09 13"      → 2022-09-14 / 2022-09-13
+      "20220810"                       → 2022-08-10
+      "22-06-27", "22_06_27"           → 2022-06-27   (YY-MM-DD)
+      "05Apr22", "20Oct22"             → 2022-04-05 / 2022-10-20
+      "06-29-2023"                     → 2023-06-29   (MM-DD-YYYY US)
+      "24.01.22"   ambiguous → set ambig=true, best guess date
+      "April 2023"                     → 2023-04-01
+
+  === DESC rules ===
+  - Describe SESSION TYPE, not company name or product
+  - Prefer: Technical_Presentation, RFP_Response, RFI_Response, Architecture_Review,
+    Integration_Workshop, Discovery_Session, Technology_Overview, Deep_Dive,
+    Platform_Demo, Follow_Up, Workshop, Training
+  - Do NOT include company or product name in desc
+
+  === TYPE rules ===
+    .pptx / .pptm / .ppt  → "PRES"
+    .pdf  / .docx / .doc  → "DOC"
+    .mp4  / .mkv  / .m4a  → "REC"
+
+  Filenames ({n} total):
+  {filenames}

@@ -1,5 +1,6 @@
-"""LLM routing and providers."""
-from .router import LLMRouter, get_router, Sensitivity, Provider, LLMResponse
-from .sensitivity import SensitivityChecker
+"""LLM clients — DeepSeek, Haiku, Sonnet."""
+from .sonnet import SonnetClient, get_client
+from .deepseek import DeepSeekClient
+from .haiku import HaikuClient
 
-__all__ = ["LLMRouter", "get_router", "Sensitivity", "Provider", "LLMResponse", "SensitivityChecker"]
+__all__ = ["SonnetClient", "get_client", "DeepSeekClient", "HaikuClient"]
