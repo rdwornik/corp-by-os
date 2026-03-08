@@ -117,3 +117,97 @@ class ValidationReport:
     @property
     def is_valid(self) -> bool:
         return not any(i.level == "error" for i in self.issues)
+
+
+# --- Workflow models ---
+
+
+@dataclass(frozen=True)
+class WorkflowStep:
+    """Single step within a workflow."""
+
+    type: str  # "agent" | "vault" | "python"
+    description: str
+    agent: str | None = None  # agent name from agents.yaml
+    command: list[str] | None = None  # CLI args
+    conditional_args: dict[str, list[str]] | None = None  # param -> extra CLI args
+    action: str | None = None  # python function name
+    params: dict = field(default_factory=dict)  # step-specific parameters
+
+
+@dataclass(frozen=True)
+class WorkflowParam:
+    """Parameter definition for a workflow."""
+
+    type: str  # "string" | "path"
+    required: bool = True
+    default: str | None = None
+
+
+@dataclass(frozen=True)
+class Workflow:
+    """Complete workflow definition loaded from workflows.yaml."""
+
+    id: str
+    description: str
+    trigger_phrases: list[str] = field(default_factory=list)
+    parameters: dict[str, WorkflowParam] = field(default_factory=dict)
+    steps: list[WorkflowStep] = field(default_factory=list)
+    confirmation: bool = False
+    cost_estimate: str | None = None
+
+
+@dataclass
+class StepResult:
+    """Outcome of executing one workflow step."""
+
+    step_index: int
+    description: str
+    success: bool
+    output: str = ""
+    error: str | None = None
+    duration_seconds: float = 0.0
+
+
+@dataclass
+class WorkflowResult:
+    """Outcome of executing a complete workflow."""
+
+    workflow_id: str
+    success: bool
+    steps: list[StepResult] = field(default_factory=list)
+    duration_seconds: float = 0.0
+
+
+# --- Task models ---
+
+
+class TaskStatus(str, Enum):
+    """Task lifecycle states."""
+
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class TaskPriority(str, Enum):
+    """Task priority levels."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+@dataclass
+class Task:
+    """A task stored as a vault note in 00_dashboards/tasks/."""
+
+    title: str
+    status: TaskStatus = TaskStatus.TODO
+    project: str | None = None
+    deadline: str | None = None
+    priority: TaskPriority = TaskPriority.MEDIUM
+    created: str = ""
+    completed: str | None = None
+    file_path: Path | None = None

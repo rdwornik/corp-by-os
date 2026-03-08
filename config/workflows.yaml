@@ -1,6 +1,5 @@
-# Workflow Definitions — corp-by-os
-# Curated multi-step pipelines. LLM selects workflow + fills parameters.
-# Step 2 will implement the engine. These are specs only.
+# Workflow Definitions — corp-by-os v0.2
+# Curated multi-step pipelines executed by the workflow engine.
 
 workflows:
   new_opportunity:
@@ -11,34 +10,136 @@ workflows:
       product: {type: string, required: true}
       contact: {type: string, required: false}
     steps:
-      - agent: corp-opportunity-manager
-        command: new
-      - action: create_vault_skeleton
-      - action: validate
+      - type: agent
+        description: "Create project folder + deck + metadata"
+        agent: corp-opportunity-manager
+        command: ["com", "new", "{client}", "-p", "{product}"]
+        conditional_args:
+          contact: ["-c", "{contact}"]
+      - type: python
+        description: "Create vault skeleton in 01_projects/"
+        action: create_vault_skeleton
+      - type: python
+        description: "Validate new project"
+        action: validate_project
     confirmation: true
+    cost_estimate: "free"
 
   extract_project:
     description: "Full extraction pipeline — scan, extract, render, copy to Obsidian"
-    trigger_phrases: ["przetwórz projekt", "extract project", "wyciągnij wiedzę", "process project"]
+    trigger_phrases: ["przetworz projekt", "extract project", "wyciagnij wiedze", "process project"]
     parameters:
       project: {type: string, required: true}
     steps:
-      - agent: corp-project-extractor
-        command: scan
-      - agent: corp-project-extractor
-        command: extract-cke
-      - agent: corp-project-extractor
-        command: render
-      - action: copy_to_vault
-      - action: validate
+      - type: agent
+        description: "Scan and classify files"
+        agent: corp-project-extractor
+        command: ["cpe", "scan", "{project_path}"]
+      - type: agent
+        description: "Extract knowledge via CKE"
+        agent: corp-project-extractor
+        command: ["cpe", "extract-cke", "{project_path}", "--max-rpm", "50"]
+      - type: agent
+        description: "Render index + facts"
+        agent: corp-project-extractor
+        command: ["cpe", "render", "{project_path}"]
+      - type: python
+        description: "Copy knowledge to Obsidian vault"
+        action: copy_to_vault
+      - type: python
+        description: "Validate vault output"
+        action: validate_project
     confirmation: true
     cost_estimate: "$0.20/project"
 
   attention_scan:
-    description: "Scan all projects for items needing attention"
-    trigger_phrases: ["co wymaga uwagi", "what needs attention", "status", "przegląd"]
+    description: "Scan all projects — find stale, missing, incomplete items"
+    trigger_phrases: ["co wymaga uwagi", "what needs attention", "status", "przeglad"]
     parameters: {}
     steps:
-      - action: scan_all_projects
-      - action: generate_attention_dashboard
+      - type: python
+        description: "Scan all projects for issues"
+        action: scan_attention
+      - type: python
+        description: "Generate attention dashboard"
+        action: generate_attention_dashboard
     confirmation: false
+    cost_estimate: "free"
+
+  prep_deck:
+    description: "Prepare presentation from template"
+    trigger_phrases: ["przygotuj prezentacje", "prep deck", "prepare presentation", "nowa prezentacja"]
+    parameters:
+      project: {type: string, required: true}
+      topic: {type: string, required: true}
+      date: {type: string, required: false, default: "today"}
+    steps:
+      - type: agent
+        description: "Copy and rename template"
+        agent: corp-opportunity-manager
+        command: ["com", "prep-deck", "{project}", "-t", "{topic}"]
+        conditional_args:
+          date: ["-d", "{date}"]
+    confirmation: false
+    cost_estimate: "free"
+
+  add_task:
+    description: "Create a task with deadline"
+    trigger_phrases: ["dodaj task", "add task", "musze zrobic", "need to", "zaplanuj", "reminder"]
+    parameters:
+      title: {type: string, required: true}
+      project: {type: string, required: false}
+      deadline: {type: string, required: false}
+      priority: {type: string, required: false, default: "medium"}
+    steps:
+      - type: python
+        description: "Create task note in vault"
+        action: add_task
+    confirmation: false
+    cost_estimate: "free"
+
+  my_tasks:
+    description: "Show current tasks sorted by deadline and priority"
+    trigger_phrases: ["moje taski", "my tasks", "co mam zrobic", "what to do", "lista zadan"]
+    parameters:
+      status: {type: string, required: false, default: "todo"}
+      project: {type: string, required: false}
+    steps:
+      - type: python
+        description: "List tasks from vault"
+        action: list_tasks
+    confirmation: false
+    cost_estimate: "free"
+
+  archive_project:
+    description: "Archive completed opportunity — move to Archive, update metadata"
+    trigger_phrases: ["archiwizuj", "archive", "zamknij projekt", "close project"]
+    parameters:
+      project: {type: string, required: true}
+      reason: {type: string, required: true}
+      notes: {type: string, required: false}
+    steps:
+      - type: agent
+        description: "Final render of project knowledge"
+        agent: corp-project-extractor
+        command: ["cpe", "render", "{project_path}"]
+      - type: python
+        description: "Move to 80_Archive/{year}/"
+        action: archive_project
+      - type: python
+        description: "Update vault metadata"
+        action: update_archive_metadata
+    confirmation: true
+    cost_estimate: "free"
+
+  project_brief:
+    description: "Generate 1-pager brief before a client call"
+    trigger_phrases: ["brief", "brief na", "prepare brief", "podsumowanie projektu", "co wiemy o"]
+    parameters:
+      project: {type: string, required: true}
+    steps:
+      - type: python
+        description: "Read facts + metadata, generate brief"
+        action: generate_project_brief
+    confirmation: false
+    cost_estimate: "free"
