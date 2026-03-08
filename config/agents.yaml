@@ -1,0 +1,68 @@
+# Agent Registry — corp-by-os
+# Each agent is invoked via CLI subprocess. NEVER import agent code directly.
+
+agents:
+  corp-opportunity-manager:
+    cli: com
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-opportunity-manager"
+    commands:
+      new: {description: "Create new opportunity", args: [client, product, "contact?"]}
+      list: {description: "List all opportunities"}
+      show: {description: "Show opportunity details", args: [client]}
+      prep-deck: {description: "Create presentation from template", args: [client, topic, "date?"]}
+      chat: {description: "Interactive conversation mode"}
+    cost: free
+    confirmation: [new]  # commands requiring confirmation
+
+  corp-project-extractor:
+    cli: cpe
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-project-extractor"
+    commands:
+      scan: {description: "Classify files in project folder", args: [project_path]}
+      extract-cke: {description: "Extract knowledge via CKE batch", args: [project_path]}
+      render: {description: "Generate index.md + facts.yaml", args: [project_path]}
+    cost: "$0.20/project average"
+    confirmation: [extract-cke]
+
+  corp-knowledge-extractor:
+    cli: cke
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-knowledge-extractor"
+    commands:
+      process: {description: "Process single file", args: [file_path]}
+      process-manifest: {description: "Batch process from manifest", args: [manifest_path]}
+    cost: "$0.001-0.03/file (tiered)"
+    confirmation: [process-manifest]
+
+  corp-os-meta:
+    cli: corp-meta
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-os-meta"
+    commands:
+      validate: {description: "Validate note frontmatter", args: [path]}
+      normalize: {description: "Normalize taxonomy terms", args: [path]}
+      report: {description: "Vault health report", args: [path]}
+    cost: free
+    confirmation: []
+
+  ai-council:
+    cli: "python -m src.cli"
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\ai-council"
+    commands:
+      ask: {description: "Multi-model debate", args: [question_or_file]}
+    cost: "$0.50-2.00/debate"
+    confirmation: [ask]
+
+  corp-pdf-toolkit:
+    cli: "python pdf2md.py"
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-pdf-toolkit"
+    commands:
+      extract: {description: "PDF to Markdown", args: [file_path]}
+    cost: free
+    confirmation: []
+
+  corp-rfp-agent:
+    cli: TBD
+    path: "C:\\Users\\1028120\\Documents\\Scripts\\corp-rfp-agent"
+    commands: {}
+    cost: TBD
+    confirmation: []
+    status: legacy  # needs rewire to ecosystem

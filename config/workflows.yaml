@@ -1,0 +1,44 @@
+# Workflow Definitions — corp-by-os
+# Curated multi-step pipelines. LLM selects workflow + fills parameters.
+# Step 2 will implement the engine. These are specs only.
+
+workflows:
+  new_opportunity:
+    description: "Create new opportunity — folder, deck, metadata, vault skeleton"
+    trigger_phrases: ["nowe opportunity", "new opportunity", "nowy klient", "new client"]
+    parameters:
+      client: {type: string, required: true}
+      product: {type: string, required: true}
+      contact: {type: string, required: false}
+    steps:
+      - agent: corp-opportunity-manager
+        command: new
+      - action: create_vault_skeleton
+      - action: validate
+    confirmation: true
+
+  extract_project:
+    description: "Full extraction pipeline — scan, extract, render, copy to Obsidian"
+    trigger_phrases: ["przetwórz projekt", "extract project", "wyciągnij wiedzę", "process project"]
+    parameters:
+      project: {type: string, required: true}
+    steps:
+      - agent: corp-project-extractor
+        command: scan
+      - agent: corp-project-extractor
+        command: extract-cke
+      - agent: corp-project-extractor
+        command: render
+      - action: copy_to_vault
+      - action: validate
+    confirmation: true
+    cost_estimate: "$0.20/project"
+
+  attention_scan:
+    description: "Scan all projects for items needing attention"
+    trigger_phrases: ["co wymaga uwagi", "what needs attention", "status", "przegląd"]
+    parameters: {}
+    steps:
+      - action: scan_all_projects
+      - action: generate_attention_dashboard
+    confirmation: false
