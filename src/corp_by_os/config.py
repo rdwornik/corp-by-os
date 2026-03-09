@@ -21,6 +21,7 @@ class AppConfig:
 
     vault_path: Path
     projects_root: Path
+    templates_root: Path
     archive_root: Path
     app_data_path: Path
     repo_path: Path
@@ -64,6 +65,10 @@ def get_config() -> AppConfig:
         "PROJECTS_ROOT",
         r"C:\Users\1028120\OneDrive - Blue Yonder\MyWork\10_Projects",
     )
+    templates_root = os.environ.get(
+        "TEMPLATES_ROOT",
+        r"C:\Users\1028120\OneDrive - Blue Yonder\MyWork\30_Templates",
+    )
     archive_root = os.environ.get(
         "ARCHIVE_ROOT",
         r"C:\Users\1028120\OneDrive - Blue Yonder\MyWork\80_Archive",
@@ -76,6 +81,7 @@ def get_config() -> AppConfig:
     return AppConfig(
         vault_path=_expand_path(vault_path),
         projects_root=_expand_path(projects_root),
+        templates_root=_expand_path(templates_root),
         archive_root=_expand_path(archive_root),
         app_data_path=_expand_path(app_data_path),
         repo_path=repo_path,

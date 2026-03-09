@@ -211,3 +211,22 @@ class Task:
     created: str = ""
     completed: str | None = None
     file_path: Path | None = None
+
+
+# --- Template models ---
+
+
+@dataclass(frozen=True)
+class TemplateInfo:
+    """A registered template file from 30_Templates/."""
+
+    id: str
+    name: str
+    file: str  # filename only
+    path: str  # relative to MyWork root (e.g. "30_Templates/...")
+    size_mb: float
+    type: str  # presentation | questionnaire | document | demo_script | data
+    use_cases: list[str] = field(default_factory=list)
+    domains: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    language: str = "en"

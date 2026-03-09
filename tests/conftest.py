@@ -75,6 +75,7 @@ def app_config(tmp_vault: Path, tmp_projects: Path, tmp_path: Path, monkeypatch:
     """Set up AppConfig pointing to temp directories."""
     monkeypatch.setenv("VAULT_PATH", str(tmp_vault))
     monkeypatch.setenv("PROJECTS_ROOT", str(tmp_projects))
+    monkeypatch.setenv("TEMPLATES_ROOT", str(tmp_path / "templates"))
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path / "archive"))
     monkeypatch.setenv("APP_DATA_PATH", str(tmp_path / "appdata"))
 
