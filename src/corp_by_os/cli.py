@@ -10,6 +10,7 @@ Commands:
     corp run --list
     corp task add "Title" [--project X] [--deadline DATE] [--priority high]
     corp task list [--status todo] [--project X]
+    corp chat [--no-llm]
     corp task done "Title"
     corp tasks
 """
@@ -499,3 +500,14 @@ def tasks_shortcut(status: str, show_all: bool) -> None:
 
     console.print(Panel("\n".join(lines), title="My Tasks", border_style="blue"))
     console.print(f"[dim]{len(tasks)} tasks[/dim]")
+
+
+# --- Chat ---
+
+
+@cli.command("chat")
+@click.option("--no-llm", is_flag=True, help="Keyword matching only, no Gemini calls")
+def chat_command(no_llm: bool) -> None:
+    """Interactive chat — natural language workflow routing."""
+    from corp_by_os.chat import chat_loop
+    chat_loop(use_llm=not no_llm)
