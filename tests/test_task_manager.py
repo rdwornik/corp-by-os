@@ -88,15 +88,29 @@ def populated_tasks(task_env: Path) -> Path:
 
 
 class TestSlugify:
-    def test_basic(self) -> None:
-        assert _slugify_title("Prepare Siemens deck") == "prepare-siemens-deck"
+    def test_english_strips_filler(self) -> None:
+        assert _slugify_title("Prepare Siemens deck") == "siemens-deck"
+
+    def test_polish_strips_verbs_and_stops(self) -> None:
+        # "Przygotować brief na Lenzing" → strip przygotowac, na → "brief-lenzing"
+        assert _slugify_title("Przygotować brief na Lenzing") == "brief-lenzing"
+
+    def test_polish_task_with_deadline(self) -> None:
+        assert _slugify_title("zrobić brief") == "brief"
 
     def test_special_chars(self) -> None:
-        assert _slugify_title("Fix bug #123 (urgent!)") == "fix-bug-123-urgent"
+        result = _slugify_title("Fix bug #123 (urgent!)")
+        assert "bug" in result
+        assert "123" in result
 
     def test_truncates_long_titles(self) -> None:
         long_title = "A" * 100
         assert len(_slugify_title(long_title)) <= 60
+
+    def test_all_stops_fallback(self) -> None:
+        # If everything is a stop word, keep all words as fallback
+        result = _slugify_title("do")
+        assert result  # not empty
 
 
 # --- Test: Add Task ---

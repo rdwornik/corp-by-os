@@ -167,6 +167,8 @@ class TestGenerateAttentionDashboard:
         assert dashboard.exists()
         content = dashboard.read_text(encoding="utf-8")
         assert "Attention Dashboard" in content
+        assert "source_tool: corp-by-os" in content
+        assert "date:" in content
         assert "HIGH" in content
         assert "Missing info" in content
 

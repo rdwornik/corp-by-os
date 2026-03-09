@@ -168,24 +168,25 @@ def scan_attention(params: dict[str, str]) -> StepResult:
     issues: list[dict[str, str]] = []
 
     for proj in projects:
-        pid = proj.project_id
+        # Use actual folder name (original casing) for display
+        display_name = _project_display_name(proj)
 
         # Check: no vault presence
         if not proj.has_vault and proj.has_onedrive:
             issues.append({
-                "project": pid,
+                "project": display_name,
                 "severity": "MEDIUM",
                 "issue": "No vault presence (exists in OneDrive only)",
             })
             continue
 
         # Read project info for deeper checks
-        info = read_project_info(pid)
+        info = read_project_info(proj.project_id)
 
         if info is None:
             if proj.has_vault:
                 issues.append({
-                    "project": pid,
+                    "project": display_name,
                     "severity": "HIGH",
                     "issue": "Missing project-info.yaml",
                 })
@@ -194,7 +195,7 @@ def scan_attention(params: dict[str, str]) -> StepResult:
         # Check: no extraction
         if info.facts_count == 0:
             issues.append({
-                "project": pid,
+                "project": display_name,
                 "severity": "HIGH",
                 "issue": "No extraction (facts_count = 0)",
             })
@@ -205,7 +206,7 @@ def scan_attention(params: dict[str, str]) -> StepResult:
                 last = datetime.strptime(info.last_extracted, "%Y-%m-%d").date()
                 if (date.today() - last) > timedelta(days=30):
                     issues.append({
-                        "project": pid,
+                        "project": display_name,
                         "severity": "MEDIUM",
                         "issue": f"Stale extraction (last: {info.last_extracted})",
                     })
@@ -215,7 +216,7 @@ def scan_attention(params: dict[str, str]) -> StepResult:
         # Check: missing products
         if not info.products:
             issues.append({
-                "project": pid,
+                "project": display_name,
                 "severity": "LOW",
                 "issue": "Missing products list",
             })
@@ -223,7 +224,7 @@ def scan_attention(params: dict[str, str]) -> StepResult:
         # Check: missing contacts
         if not info.people:
             issues.append({
-                "project": pid,
+                "project": display_name,
                 "severity": "LOW",
                 "issue": "Missing contacts/people list",
             })
@@ -251,7 +252,9 @@ def generate_attention_dashboard(params: dict[str, str]) -> StepResult:
         "---",
         "title: Attention Dashboard",
         "document_type: dashboard",
+        f"date: \"{date.today().isoformat()}\"",
         f"generated: \"{date.today().isoformat()}\"",
+        "source_tool: corp-by-os",
         "tags: [dashboard, auto-generated]",
         "---",
         "",
@@ -556,7 +559,122 @@ def list_tasks_action(params: dict[str, str]) -> StepResult:
     )
 
 
+@register_action("select_template_for_deck")
+def select_template_for_deck(params: dict[str, str]) -> StepResult:
+    """Select the best template for a presentation topic."""
+    from corp_by_os.template_manager import load_registry, select_template
+
+    topic = params.get("topic", "")
+    template_id = params.get("template_id", "")
+
+    templates = load_registry()
+    if not templates:
+        return StepResult(
+            step_index=0, description="Select template",
+            success=False, error="No templates in registry. Run `corp template scan` first.",
+        )
+
+    if template_id:
+        # User explicitly chose a template
+        match = [t for t in templates if t.id == template_id]
+        if match:
+            selected = match[0]
+        else:
+            return StepResult(
+                step_index=0, description="Select template",
+                success=False,
+                error=f"Template '{template_id}' not found. Run `corp template list`.",
+            )
+    else:
+        selected = select_template(topic, templates)
+        if selected is None:
+            return StepResult(
+                step_index=0, description="Select template",
+                success=False, error="No matching template found.",
+            )
+
+    # Pass selection to next step via params
+    params["_selected_template_id"] = selected.id
+    params["_selected_template_path"] = selected.path
+    params["_selected_template_file"] = selected.file
+    params["_selected_template_name"] = selected.name
+
+    return StepResult(
+        step_index=0, description="Select template",
+        success=True,
+        output=f"Selected: {selected.name} ({selected.id})",
+    )
+
+
+@register_action("copy_deck_to_project")
+def copy_deck_to_project(params: dict[str, str]) -> StepResult:
+    """Copy selected template to project folder with naming convention."""
+    from corp_by_os.template_manager import copy_template, load_registry
+
+    template_id = params.get("_selected_template_id", "")
+    if not template_id:
+        return StepResult(
+            step_index=0, description="Copy deck",
+            success=False, error="No template selected (missing _selected_template_id).",
+        )
+
+    project = params.get("project", "")
+    topic = params.get("topic", "presentation")
+    deck_date = params.get("date", date.today().isoformat())
+    if deck_date == "today":
+        deck_date = date.today().isoformat()
+
+    # Load template info
+    templates = load_registry()
+    match = [t for t in templates if t.id == template_id]
+    if not match:
+        return StepResult(
+            step_index=0, description="Copy deck",
+            success=False, error=f"Template '{template_id}' not in registry.",
+        )
+    template = match[0]
+
+    # Resolve destination
+    dest_dir = _resolve_project_path(project, params)
+    if not dest_dir:
+        # Fallback: use projects_root / project
+        cfg = get_config()
+        dest_dir = cfg.projects_root / project
+
+    # Build filename: {Client}_{Date}_{Topic}.ext
+    client = params.get("client", project.split("_")[0] if "_" in project else project)
+    topic_slug = topic.replace(" ", "_").title()
+    ext = Path(template.file).suffix
+    new_name = f"{client}_{deck_date}_{topic_slug}{ext}"
+
+    try:
+        result_path = copy_template(template, dest_dir, new_name)
+        return StepResult(
+            step_index=0, description="Copy deck",
+            success=True, output=f"Copied to {result_path}",
+        )
+    except FileNotFoundError as e:
+        return StepResult(
+            step_index=0, description="Copy deck",
+            success=False, error=str(e),
+        )
+    except OSError as e:
+        return StepResult(
+            step_index=0, description="Copy deck",
+            success=False, error=f"Copy failed: {e}",
+        )
+
+
 # --- Helpers ---
+
+
+def _project_display_name(proj) -> str:
+    """Get original-casing folder name from a ProjectSummary."""
+    if proj.onedrive_path:
+        return proj.onedrive_path.name
+    if proj.vault_path:
+        return proj.vault_path.name
+    return proj.project_id
 
 
 def _slugify(text: str) -> str:
