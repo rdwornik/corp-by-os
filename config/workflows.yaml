@@ -67,20 +67,21 @@ workflows:
     cost_estimate: "free"
 
   prep_deck:
-    description: "Prepare presentation from template"
+    description: "Prepare presentation — smart template selection"
     trigger_phrases: ["przygotuj prezentacje", "prep deck", "prepare presentation", "nowa prezentacja"]
     parameters:
       project: {type: string, required: true}
       topic: {type: string, required: true}
       date: {type: string, required: false, default: "today"}
+      template_id: {type: string, required: false}
     steps:
-      - type: agent
-        description: "Copy and rename template"
-        agent: corp-opportunity-manager
-        command: ["com", "prep-deck", "{project}", "-t", "{topic}"]
-        conditional_args:
-          date: ["-d", "{date}"]
-    confirmation: false
+      - type: python
+        description: "Select best template for topic"
+        action: select_template_for_deck
+      - type: python
+        description: "Copy template to project folder"
+        action: copy_deck_to_project
+    confirmation: true
     cost_estimate: "free"
 
   add_task:

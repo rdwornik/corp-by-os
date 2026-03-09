@@ -27,11 +27,42 @@ def _tasks_root() -> Path:
 
 
 def _slugify_title(title: str) -> str:
-    """Convert a title to a filename-safe slug."""
-    slug = title.lower().strip()
-    slug = re.sub(r"[^a-z0-9]+", "-", slug)
-    slug = slug.strip("-")
-    return slug[:60]  # keep it reasonable
+    """Convert a title to an English filename-safe slug.
+
+    Strips Polish stop words and common verbs, keeps meaningful
+    content words (project names, English loanwords, nouns).
+    """
+    # Polish stop words / filler verbs that add no meaning to a filename
+    _PL_STOP = {
+        # prepositions / conjunctions
+        "na", "do", "w", "z", "ze", "od", "po", "dla", "o", "i", "a",
+        "nie", "co", "jak", "to", "sie", "ale", "czy", "ze", "lub",
+        # common task verbs (infinitive + imperative forms)
+        "przygotowac", "przygotuj", "zrobic", "zrob", "wyslac", "wyslij",
+        "sprawdzic", "sprawdz", "napisac", "napisz", "umiescic", "umiesc",
+        "zaplanowac", "zaplanuj", "przypomn", "przypomnic", "przypomnij",
+        "przejrzec", "przejrzyj", "zaktualizowac", "zaktualizuj",
+        "dodac", "dodaj", "stworzyc", "stworz", "wyciagnac", "wyciagnij",
+        "przetworzyc", "przetwarz", "archiwizuj", "archiwizowac",
+        "musze", "trzeba", "nalezy", "powinien",
+        # English filler
+        "the", "a", "an", "to", "for", "of", "and", "or", "in", "on",
+        "need", "must", "should", "prepare", "review", "send", "check",
+        "create", "make", "update", "add", "write", "do",
+    }
+    # Strip diacritics for comparison
+    from corp_by_os.intent_router import _strip_diacritics
+
+    normalized = _strip_diacritics(title.lower().strip())
+    words = re.split(r"[^a-z0-9]+", normalized)
+    content = [w for w in words if w and w not in _PL_STOP and len(w) > 1]
+
+    if not content:
+        # Fallback: use all words
+        content = [w for w in words if w]
+
+    slug = "-".join(content)
+    return slug[:60] if slug else "task"
 
 
 def add_task(
@@ -65,7 +96,7 @@ def add_task(
         "status": "todo",
         "priority": priority,
         "created": today,
-        "completed": None,
+        "source_tool": "corp-by-os",
         "tags": ["task"],
     }
     if project_id:
