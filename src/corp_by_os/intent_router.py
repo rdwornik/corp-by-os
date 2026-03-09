@@ -75,14 +75,13 @@ REASON_KEYWORDS: dict[str, str] = {
 # --- Polish day names for date resolution ---
 
 _WEEKDAY_MAP: dict[str, int] = {
-    "poniedzialek": 0,
-    "wtorek": 1,
-    "sroda": 2,
-    "srode": 2,
-    "czwartek": 3,
-    "piatek": 4,
-    "sobota": 5,
-    "niedziela": 6,
+    "poniedzialek": 0, "poniedzialku": 0,
+    "wtorek": 1, "wtorku": 1,
+    "sroda": 2, "srode": 2, "srody": 2,
+    "czwartek": 3, "czwartku": 3,
+    "piatek": 4, "piatku": 4,
+    "sobota": 5, "soboty": 5, "sobote": 5,
+    "niedziela": 6, "niedzieli": 6, "niedziele": 6,
     "monday": 0,
     "tuesday": 1,
     "wednesday": 2,
@@ -202,18 +201,23 @@ def _check_task_shortcuts(normalized: str, raw: str) -> Intent | None:
             if not title_part:
                 title_part = raw.strip()
 
+            # Extract date/priority/project from the full input
+            extracted_date = _extract_date(normalized)
+            extracted_priority = _extract_priority(normalized)
+            extracted_project = _extract_project_ref(normalized)
+
+            # Strip date/deadline references from title
+            title_part = _strip_date_references(title_part)
+            title_part = title_part.strip().rstrip(",").strip()
+            if not title_part:
+                title_part = raw.strip()
+
             params: dict[str, str] = {"title": title_part}
 
-            # Extract date/priority/project from the title
-            extracted_date = _extract_date(normalized)
             if extracted_date:
                 params["deadline"] = extracted_date
-
-            extracted_priority = _extract_priority(normalized)
             if extracted_priority:
                 params["priority"] = extracted_priority
-
-            extracted_project = _extract_project_ref(normalized)
             if extracted_project:
                 params["project"] = extracted_project
 
@@ -333,6 +337,47 @@ def _extract_project_ref(normalized: str) -> str | None:
     except Exception:
         pass
     return None
+
+
+def _strip_date_references(text: str) -> str:
+    """Remove date/deadline phrases from text (for cleaning task titles).
+
+    Handles: "do piątku", "do środy", "do 15 marca", "do jutra",
+             "by Friday", "by tomorrow", "before 2026-03-15"
+    Works on both raw text (with diacritics) and normalized text.
+    """
+    # Polish weekday forms — both with and without diacritics
+    _PL_WEEKDAYS_ALL = [
+        "poniedziałek", "poniedzialek", "poniedziałku", "poniedzialku",
+        "wtorek", "wtorku",
+        "środa", "sroda", "środę", "srode", "środy", "srody",
+        "czwartek", "czwartku",
+        "piątek", "piatek", "piątku", "piatku",
+        "sobota", "soboty", "sobotę", "sobote",
+        "niedziela", "niedzieli", "niedzielę", "niedziele",
+        "monday", "tuesday", "wednesday", "thursday",
+        "friday", "saturday", "sunday",
+    ]
+    _PL_RELATIVE = ["dzisiaj", "jutro", "pojutrze", "today", "tomorrow"]
+    _PL_MONTHS_ALL = list(_POLISH_MONTHS.keys())
+
+    weekdays_pattern = "|".join(re.escape(w) for w in _PL_WEEKDAYS_ALL)
+    relative_pattern = "|".join(_PL_RELATIVE)
+    months_pattern = "|".join(_PL_MONTHS_ALL)
+
+    patterns = [
+        r"\s+do\s+(?:" + weekdays_pattern + r")\b",
+        r"\s+do\s+(?:" + relative_pattern + r")\b",
+        r"\s+do\s+\d{1,2}\s+(?:" + months_pattern + r")\b",
+        r"\s+do\s+\d{4}-\d{2}-\d{2}\b",
+        r"\s+(?:by|before)\s+(?:" + weekdays_pattern + r")\b",
+        r"\s+(?:by|before)\s+(?:" + relative_pattern + r")\b",
+        r"\s+(?:by|before)\s+\d{4}-\d{2}-\d{2}\b",
+    ]
+    result = text
+    for pattern in patterns:
+        result = re.sub(pattern, "", result, flags=re.IGNORECASE)
+    return result
 
 
 def _extract_date(normalized: str) -> str | None:

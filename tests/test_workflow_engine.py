@@ -196,6 +196,33 @@ class TestExecuteWorkflow:
             result = execute_workflow(wf, {})
             assert result.success is True
 
+    def test_inter_step_params_propagate(self) -> None:
+        """Params written by step 1 must be visible to step 2."""
+        wf = Workflow(
+            id="two_step",
+            description="Two python steps sharing state",
+            parameters={},
+            steps=[
+                WorkflowStep(type="python", description="Step A", action="step_a"),
+                WorkflowStep(type="python", description="Step B", action="step_b"),
+            ],
+        )
+
+        def step_a(params):
+            params["_shared"] = "hello"
+            return StepResult(step_index=0, description="A", success=True)
+
+        def step_b(params):
+            got = params.get("_shared", "MISSING")
+            return StepResult(step_index=1, description="B", success=True, output=got)
+
+        with patch("corp_by_os.built_in_actions.get_action") as mock_get:
+            mock_get.side_effect = lambda name: {"step_a": step_a, "step_b": step_b}.get(name)
+            result = execute_workflow(wf, {})
+
+        assert result.success is True
+        assert result.steps[1].output == "hello"
+
     @patch("corp_by_os.workflow_engine._execute_agent_step")
     @patch("corp_by_os.workflow_engine._execute_python_step")
     def test_sequential_execution(self, mock_python, mock_agent, sample_workflow: Workflow) -> None:

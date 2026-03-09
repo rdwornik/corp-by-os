@@ -201,6 +201,32 @@ class TestTaskShortcuts:
         assert intent is not None
         assert intent.workflow_id == "add_task"
 
+    def test_do_piatku_extracts_deadline_and_strips_title(self, sample_workflows) -> None:
+        intent = _keyword_match("muszę zrobić brief do piątku", sample_workflows)
+        assert intent is not None
+        assert intent.workflow_id == "add_task"
+        assert "deadline" in intent.parameters
+        parsed = date.fromisoformat(intent.parameters["deadline"])
+        assert parsed.weekday() == 4  # Friday
+        # "do piątku" should not remain in title
+        assert "piatku" not in intent.parameters["title"].lower()
+        assert "piątku" not in intent.parameters["title"].lower()
+
+    def test_do_srody_extracts_deadline_and_strips_title(self, sample_workflows) -> None:
+        intent = _keyword_match("muszę wysłać ofertę do środy", sample_workflows)
+        assert intent is not None
+        assert "deadline" in intent.parameters
+        parsed = date.fromisoformat(intent.parameters["deadline"])
+        assert parsed.weekday() == 2  # Wednesday
+        assert "srody" not in intent.parameters["title"].lower()
+        assert "środy" not in intent.parameters["title"].lower()
+
+    def test_by_friday_strips_from_title(self, sample_workflows) -> None:
+        intent = _keyword_match("I need to send proposal by friday", sample_workflows)
+        assert intent is not None
+        assert "deadline" in intent.parameters
+        assert "friday" not in intent.parameters["title"].lower()
+
 
 # --- Test: Parameter Extraction ---
 

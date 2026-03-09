@@ -155,8 +155,10 @@ def classify_intent(
             response_text="Limit LLM na dziś wyczerpany. Użyj `corp run <workflow>` bezpośrednio.",
         )
 
+    # Use GEMINI_API_KEY only — ignore GOOGLE_API_KEY to avoid SDK confusion
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        logger.debug("GEMINI_API_KEY not set, skipping LLM routing")
         return Intent(
             source="none",
             response_text="Brak GEMINI_API_KEY. Ustaw w .env lub użyj `corp chat --no-llm`.",
