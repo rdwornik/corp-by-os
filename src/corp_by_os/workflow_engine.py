@@ -298,9 +298,9 @@ def _execute_python_step(step: WorkflowStep, params: dict[str, str]) -> StepResu
         )
 
     desc = _interpolate(step.description, params)
-    # Merge step.params with workflow params
-    merged_params = {**params, **step.params}
-    return action_fn(merged_params)
+    # Merge step.params into workflow params (in-place so inter-step state propagates)
+    params.update(step.params)
+    return action_fn(params)
 
 
 # --- Helpers ---
