@@ -54,10 +54,9 @@ def create_vault_skeleton(params: dict[str, str]) -> StepResult:
             success=False, error="Missing 'client' parameter",
         )
 
-    # Build project_id from client + product
-    project_id = _slugify(client)
-    if product:
-        project_id = f"{project_id}_{_slugify(product)}"
+    # Build project_id matching com new's {client}_{product} pattern, then lowercase
+    folder_name = client if not product else f"{client}_{product}"
+    project_id = folder_name.lower()
 
     project_dir = cfg.vault_path / VaultZone.PROJECTS.value / project_id
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -568,14 +567,12 @@ def _slugify(text: str) -> str:
 def _resolve_project_id(project: str, params: dict[str, str]) -> str:
     """Resolve a project name to a project_id."""
     if not project:
-        # Try building from client + product params
+        # Build from client + product matching com new's {client}_{product} pattern
         client = params.get("client", "")
         product = params.get("product", "")
         if client:
-            pid = _slugify(client)
-            if product:
-                pid = f"{pid}_{_slugify(product)}"
-            return pid
+            folder_name = client if not product else f"{client}_{product}"
+            return folder_name.lower()
         return ""
 
     # Try fuzzy resolution
