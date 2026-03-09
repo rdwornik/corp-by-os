@@ -12,6 +12,10 @@ Commands:
     corp task list [--status todo] [--project X]
     corp task done "Title"
     corp tasks
+    corp index rebuild [--project X]
+    corp index stats
+    corp query "search terms" [--project X] [--product Y] [--topic Z]
+    corp analytics
     corp template list
     corp template scan
     corp template select "goal description"
@@ -503,6 +507,202 @@ def tasks_shortcut(status: str, show_all: bool) -> None:
 
     console.print(Panel("\n".join(lines), title="My Tasks", border_style="blue"))
     console.print(f"[dim]{len(tasks)} tasks[/dim]")
+
+
+# --- Index commands ---
+
+
+@cli.group("index")
+def index_group() -> None:
+    """Manage the cross-project search index."""
+
+
+@index_group.command("rebuild")
+@click.option("--project", "-p", default=None, help="Update single project only")
+def index_rebuild(project: str | None) -> None:
+    """Rebuild the SQLite index from all projects."""
+    from corp_by_os.index_builder import rebuild_index, update_project
+
+    if project:
+        console.print(f"[dim]Updating index for {project}...[/dim]")
+        ok = update_project(project)
+        if ok:
+            console.print(f"[green]Updated {project} in index.[/green]")
+        else:
+            console.print(f"[red]Project '{project}' not found.[/red]")
+            sys.exit(1)
+    else:
+        console.print("[dim]Rebuilding full index...[/dim]")
+        stats = rebuild_index()
+        console.print(
+            f"[green]Indexed {stats.projects_indexed} projects, "
+            f"{stats.facts_indexed} facts[/green] in {stats.rebuild_duration:.1f}s",
+        )
+        console.print(f"[dim]{stats.index_path}[/dim]")
+
+
+@index_group.command("stats")
+def index_stats() -> None:
+    """Show index stats."""
+    from corp_by_os.index_builder import get_index_path, get_index_stats
+
+    path = get_index_path()
+    if not path.exists():
+        console.print("[yellow]No index found. Run `corp index rebuild` first.[/yellow]")
+        return
+
+    stats = get_index_stats()
+    size_mb = path.stat().st_size / (1024 * 1024)
+
+    table = Table(title="Index Stats", show_header=False, box=None)
+    table.add_column("Key", style="cyan", width=25)
+    table.add_column("Value", style="white")
+
+    table.add_row("Path", str(path))
+    table.add_row("Size", f"{size_mb:.2f} MB")
+    table.add_row("Projects", stats.get("total_projects", "?"))
+    table.add_row("Facts", stats.get("total_facts", "?"))
+    table.add_row("Last rebuild", stats.get("last_rebuild", "never"))
+    table.add_row("Rebuild duration", f"{stats.get('rebuild_duration_seconds', '?')}s")
+
+    console.print(table)
+
+
+# --- Query commands ---
+
+
+@cli.command("query")
+@click.argument("search_terms", required=False, default=None)
+@click.option("--project", "-p", default=None, help="Filter by project")
+@click.option("--product", default=None, help="Filter by product")
+@click.option("--topic", default=None, help="Filter by topic")
+@click.option("--limit", "-n", default=20, help="Max results")
+def query_command(
+    search_terms: str | None,
+    project: str | None,
+    product: str | None,
+    topic: str | None,
+    limit: int,
+) -> None:
+    """Search across project facts and metadata."""
+    from corp_by_os.index_builder import get_index_path
+
+    if not get_index_path().exists():
+        console.print("[yellow]No index. Run `corp index rebuild` first.[/yellow]")
+        sys.exit(1)
+
+    if search_terms:
+        from corp_by_os.query_engine import search_facts
+
+        results = search_facts(search_terms, project_filter=project, limit=limit)
+        if not results:
+            console.print(f"[yellow]No results for '{search_terms}'[/yellow]")
+            return
+
+        table = Table(title=f"Facts matching '{search_terms}'", show_lines=True)
+        table.add_column("Client", style="cyan", width=20)
+        table.add_column("Fact", style="white")
+        table.add_column("Source", style="dim", width=25)
+
+        for r in results:
+            table.add_row(r.client, r.fact[:150], r.source_title[:25] if r.source_title else "")
+
+        console.print(table)
+        console.print(f"[dim]{len(results)} results[/dim]")
+
+    elif product or topic:
+        from corp_by_os.query_engine import search_projects
+
+        products_list = [product] if product else None
+        topics_list = [topic] if topic else None
+        results = search_projects(products=products_list, topics=topics_list)
+
+        if not results:
+            console.print("[yellow]No matching projects.[/yellow]")
+            return
+
+        table = Table(title="Matching Projects", show_lines=False)
+        table.add_column("Project", style="cyan")
+        table.add_column("Client", style="white")
+        table.add_column("Status", style="green")
+        table.add_column("Products", style="dim")
+        table.add_column("Facts", justify="right")
+
+        for r in results:
+            table.add_row(
+                r.project_id,
+                r.client,
+                r.status,
+                ", ".join(r.products[:3]),
+                str(r.facts_count),
+            )
+
+        console.print(table)
+        console.print(f"[dim]{len(results)} projects[/dim]")
+    else:
+        console.print("[yellow]Provide search terms or --product/--topic filter.[/yellow]")
+        sys.exit(1)
+
+
+@cli.command("analytics")
+def analytics_command() -> None:
+    """Show cross-project analytics and patterns."""
+    from corp_by_os.index_builder import get_index_path
+    from corp_by_os.query_engine import get_analytics
+
+    if not get_index_path().exists():
+        console.print("[yellow]No index. Run `corp index rebuild` first.[/yellow]")
+        sys.exit(1)
+
+    report = get_analytics()
+
+    # Write dashboard
+    from corp_by_os.built_in_actions import _write_analytics_dashboard
+    _write_analytics_dashboard(report)
+
+    console.print(Panel(
+        f"[bold]{report.total_projects}[/bold] projects, "
+        f"[bold]{report.total_facts}[/bold] facts indexed\n"
+        f"Avg facts/project: {report.avg_facts_per_project}",
+        title="Cross-Project Analytics",
+        border_style="blue",
+    ))
+
+    if report.top_topics:
+        table = Table(title="Top Topics", show_lines=False)
+        table.add_column("Topic", style="cyan")
+        table.add_column("Facts", justify="right")
+        for topic, count in report.top_topics[:10]:
+            table.add_row(topic, str(count))
+        console.print(table)
+
+    if report.top_products:
+        table = Table(title="Top Products", show_lines=False)
+        table.add_column("Product", style="cyan")
+        table.add_column("Projects", justify="right")
+        for product, count in report.top_products[:10]:
+            table.add_row(product, str(count))
+        console.print(table)
+
+    if report.product_bundles:
+        table = Table(title="Common Bundles", show_lines=False)
+        table.add_column("Bundle", style="cyan")
+        table.add_column("Count", justify="right")
+        for bundle, count in report.product_bundles[:5]:
+            table.add_row(bundle, str(count))
+        console.print(table)
+
+    if report.projects_by_status:
+        table = Table(title="Projects by Status", show_lines=False)
+        table.add_column("Status", style="cyan")
+        table.add_column("Count", justify="right")
+        for status, count in sorted(report.projects_by_status.items()):
+            table.add_row(status, str(count))
+        console.print(table)
+
+    cfg = get_config()
+    dashboard = cfg.vault_path / "00_dashboards" / "analytics.md"
+    console.print(f"\n[dim]Dashboard: {dashboard}[/dim]")
 
 
 # --- Template commands ---

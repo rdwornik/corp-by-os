@@ -144,3 +144,27 @@ workflows:
         action: generate_project_brief
     confirmation: false
     cost_estimate: "free"
+
+  query_knowledge:
+    description: "Search across all project facts"
+    trigger_phrases: ["kto pytal o", "which clients", "znajdz", "search", "query", "szukaj"]
+    parameters:
+      query: {type: string, required: true}
+      project: {type: string, required: false}
+    steps:
+      - type: python
+        description: "Full-text search across indexed facts"
+        action: query_knowledge
+    confirmation: false
+    cost_estimate: "free"
+
+  show_analytics:
+    description: "Cross-project analytics and patterns"
+    trigger_phrases: ["analytics", "analityka", "patterns", "wzorce", "statystyki", "stats"]
+    parameters: {}
+    steps:
+      - type: python
+        description: "Generate analytics from index"
+        action: show_analytics
+    confirmation: false
+    cost_estimate: "free"

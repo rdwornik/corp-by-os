@@ -230,3 +230,56 @@ class TemplateInfo:
     domains: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     language: str = "en"
+
+
+# --- Index models ---
+
+
+@dataclass
+class IndexStats:
+    """Result of an index rebuild."""
+
+    projects_indexed: int
+    facts_indexed: int
+    rebuild_duration: float
+    index_path: str
+
+
+@dataclass(frozen=True)
+class FactResult:
+    """A single fact returned from search."""
+
+    project_id: str
+    client: str
+    fact: str
+    source_title: str = ""
+    topics: list[str] = field(default_factory=list)
+    relevance_score: float = 0.0
+
+
+@dataclass(frozen=True)
+class ProjectResult:
+    """A project returned from structured search."""
+
+    project_id: str
+    client: str
+    status: str = ""
+    products: list[str] = field(default_factory=list)
+    topics: list[str] = field(default_factory=list)
+    facts_count: int = 0
+
+
+@dataclass
+class AnalyticsReport:
+    """Cross-project analytics from the index."""
+
+    total_projects: int
+    total_facts: int
+    top_topics: list[tuple[str, int]] = field(default_factory=list)
+    top_products: list[tuple[str, int]] = field(default_factory=list)
+    top_domains: list[tuple[str, int]] = field(default_factory=list)
+    product_bundles: list[tuple[str, int]] = field(default_factory=list)
+    projects_by_status: dict[str, int] = field(default_factory=dict)
+    projects_by_region: dict[str, int] = field(default_factory=dict)
+    avg_facts_per_project: float = 0.0
+    stale_projects: list[str] = field(default_factory=list)
