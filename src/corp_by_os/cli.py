@@ -274,6 +274,52 @@ def doctor() -> None:
 
     console.print(table)
 
+    # --- System Integrity Checks ---
+    from corp_by_os.doctor.integrity import check_all
+    from corp_by_os.index_builder import get_index_path
+    from corp_by_os.ops.database import get_ops_db_path
+
+    console.print("\n[bold]System Integrity[/bold]")
+
+    integrity = check_all(
+        mywork_root=cfg.mywork_root,
+        vault_root=cfg.vault_path,
+        index_db_path=get_index_path(),
+        ops_db_path=get_ops_db_path(),
+        registry_path=cfg.repo_path / "config" / "content_registry.yaml",
+        routing_map_path=cfg.mywork_root / "90_System" / "routing_map.yaml",
+    )
+
+    if integrity.issues:
+        issue_table = Table(title="Integrity Issues")
+        issue_table.add_column("Severity", width=8)
+        issue_table.add_column("Category", width=10)
+        issue_table.add_column("Issue", max_width=60)
+        issue_table.add_column("Fix", max_width=40, style="dim")
+
+        sev_styles = {
+            "error": "red bold", "warning": "yellow", "info": "dim",
+        }
+        for issue in integrity.issues:
+            sev_style = sev_styles.get(issue.severity, "")
+            issue_table.add_row(
+                f"[{sev_style}]{issue.severity}[/{sev_style}]",
+                issue.category,
+                issue.description,
+                issue.fix_hint or "",
+            )
+        console.print(issue_table)
+
+    console.print(
+        f"\n  Passed: {integrity.checks_passed}  "
+        f"Warnings: {integrity.checks_warned}  "
+        f"Errors: {integrity.checks_failed}",
+    )
+    if integrity.healthy:
+        console.print("[green]  System healthy.[/green]")
+    else:
+        console.print("[red]  Issues found -- see above.[/red]")
+
 
 # --- Workflow commands ---
 
