@@ -27,6 +27,8 @@ Commands:
     corp ingest [PATH] [--dry-run] [--no-extract]
     corp finalize [--approve-all]
     corp chat [--no-llm]
+    corp retrieve "query" [--client X] [--product Y] [--top N]
+    corp prep <client> [--model M] [--output DIR]
 """
 
 from __future__ import annotations
@@ -1950,6 +1952,148 @@ def classify_command(model: str, budget: float, dry_run: bool) -> None:
         )
 
     ops.close()
+
+
+# --- Retrieve & Prep ---
+
+
+@cli.command("retrieve")
+@click.argument("query")
+@click.option("--client", default=None, help="Filter by client name")
+@click.option("--product", default=None, help="Filter by product")
+@click.option("--top", default=10, type=int, help="Number of results")
+def retrieve_cmd(query: str, client: str | None, product: str | None, top: int) -> None:
+    """Search the knowledge base.
+
+    Retrieves notes matching the query with optional metadata filters.
+
+    Examples:
+
+        corp retrieve "Platform Architecture"
+
+        corp retrieve "WMS integration" --client Lenzing
+
+        corp retrieve "demand planning" --product "Cognitive Demand Planning"
+    """
+    from corp_by_os.index_builder import get_index_path
+    from corp_by_os.retrieve.engine import RetrievalFilter, retrieve
+
+    cfg = get_config()
+    filters = RetrievalFilter(
+        client=client,
+        products=[product] if product else None,
+    )
+
+    result = retrieve(
+        query=query,
+        db_path=get_index_path(),
+        vault_root=cfg.vault_path,
+        filters=filters,
+        top_n=top,
+    )
+
+    if not result.notes:
+        console.print(f"[yellow]No results for '{query}'[/yellow]")
+        if result.coverage_gaps:
+            for gap in result.coverage_gaps:
+                console.print(f"  [dim]{gap}[/dim]")
+        return
+
+    table = Table(
+        title=f"Knowledge: '{query}'"
+        + (f" [client={client}]" if client else ""),
+    )
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Title", style="cyan", max_width=50)
+    table.add_column("Client", max_width=15)
+    table.add_column("Type", style="dim", max_width=12)
+    table.add_column("Topics", max_width=30)
+
+    for i, note in enumerate(result.notes, 1):
+        table.add_row(
+            str(i),
+            note.title,
+            note.client or DASH,
+            note.source_type or DASH,
+            ", ".join(note.topics[:3]) or DASH,
+        )
+
+    console.print(table)
+    console.print(
+        f"\n  Found: {result.total_found} | "
+        f"Shown: {len(result.notes)} | "
+        f"Sufficient: {'Yes' if result.sufficient else 'No'}",
+    )
+    if result.coverage_gaps:
+        console.print(f"  Gaps: {', '.join(result.coverage_gaps)}")
+
+
+@cli.command("prep")
+@click.argument("client")
+@click.option("--model", default="gemini-2.0-flash", help="LLM model for synthesis")
+@click.option("--output", default=None, help="Output directory (default: project folder or 90_System)")
+def prep_cmd(client: str, model: str, output: str | None) -> None:
+    """Prepare a client briefing for an upcoming meeting.
+
+    Retrieves all knowledge about the client and generates
+    a structured briefing with key facts, talking points,
+    and knowledge gaps.
+
+    The briefing is saved as a markdown file.
+
+    Examples:
+
+        corp prep Lenzing
+
+        corp prep SGDBF
+
+        corp prep "Alfa Laval"
+    """
+    from corp_by_os.index_builder import get_index_path
+    from corp_by_os.retrieve.prep import generate_prep
+
+    cfg = get_config()
+
+    if output:
+        output_dir = Path(output)
+    else:
+        projects_dir = cfg.mywork_root / "10_Projects"
+        matching = [
+            d for d in projects_dir.iterdir()
+            if d.is_dir()
+            and client.lower().replace(" ", "_") in d.name.lower()
+        ] if projects_dir.exists() else []
+        if matching:
+            output_dir = matching[0]
+        else:
+            output_dir = cfg.mywork_root / "90_System"
+
+    console.print(f"[bold]Preparing briefing for: {client}[/bold]")
+    console.print("Retrieving knowledge...")
+
+    briefing = generate_prep(
+        client=client,
+        db_path=get_index_path(),
+        vault_root=cfg.vault_path,
+        output_dir=output_dir,
+        model=model,
+    )
+
+    console.print(f"\n[bold green]Briefing generated![/bold green]")
+    console.print(f"  Sources: {briefing.source_count} notes")
+    console.print(f"  Cost: ${briefing.cost:.4f}")
+    console.print(f"  Saved: {output_dir}")
+
+    if briefing.coverage_gaps:
+        console.print(f"\n[yellow]Knowledge gaps:[/yellow]")
+        for gap in briefing.coverage_gaps:
+            console.print(f"  • {gap}")
+
+    if not briefing.retrieval.sufficient:
+        console.print(
+            f"\n[red]Warning: Limited knowledge about {client}. "
+            f"Briefing may be incomplete.[/red]",
+        )
 
 
 # --- Chat ---
