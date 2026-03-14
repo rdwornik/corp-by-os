@@ -23,6 +23,7 @@ Commands:
     corp overnight [--scope SCOPE] [--budget N] [--dry-run] [--batch]
     corp cleanup-scan [--output PATH]
     corp apply-moves <moves-file> [--dry-run]
+    corp cleanup [--scope all|duplicates|overlap|artifacts] [--execute]
     corp audit [--skip-gemini] [--budget 0.30]
     corp ingest [PATH] [--dry-run] [--no-extract]
     corp finalize [--approve-all]
@@ -1498,6 +1499,133 @@ def apply_moves_command(moves_file: str | None, dry_run: bool) -> None:
         title="Execution Result",
         border_style="green" if result.failed == 0 else "red",
     ))
+
+
+@cli.command("cleanup")
+@click.option(
+    "--scope",
+    type=click.Choice(["duplicates", "overlap", "artifacts", "all"]),
+    default="all",
+    help="What to clean up",
+)
+@click.option("--execute", is_flag=True, help="Actually delete (default is plan-only)")
+def cleanup_cmd(scope: str, execute: bool) -> None:
+    """Analyze and clean up disk space.
+
+    Default: produces a cleanup plan for review.
+    With --execute: carries out approved deletions.
+
+    Examples:
+
+        corp cleanup                              # Full analysis, plan only
+
+        corp cleanup --scope duplicates           # Just find duplicates
+
+        corp cleanup --scope artifacts --execute  # Clean extraction artifacts
+    """
+    from corp_by_os.cleanup.disk import (
+        APPDATA_GUIDANCE,
+        PAGEFILE_GUIDANCE,
+        CleanupPlan,
+        execute_plan,
+        find_duplicates,
+        find_extraction_artifacts,
+        find_onedrive_overlap,
+        find_staging_artifacts,
+    )
+
+    cfg = get_config()
+    plans: list[tuple[str, CleanupPlan]] = []
+
+    if scope in ("overlap", "all"):
+        console.print("[bold]Scanning OneDrive overlap...[/bold]")
+        overlap = find_onedrive_overlap(cfg.mywork_root)
+        if overlap.total_files > 0:
+            plans.append(("OneDrive Overlap", overlap))
+
+    if scope in ("duplicates", "all"):
+        console.print("[bold]Scanning for duplicates...[/bold]")
+        dupes = find_duplicates(cfg.mywork_root)
+        if dupes.total_files > 0:
+            plans.append(("Duplicates", dupes))
+
+    if scope in ("artifacts", "all"):
+        console.print("[bold]Scanning extraction artifacts...[/bold]")
+        artifacts = find_extraction_artifacts(cfg.mywork_root)
+        if artifacts.total_files > 0:
+            plans.append(("CKE Artifacts", artifacts))
+
+        staging = find_staging_artifacts(cfg.app_data_path)
+        if staging.total_files > 0:
+            plans.append(("Staging Artifacts", staging))
+
+    if not plans:
+        console.print("[green]No cleanup opportunities found.[/green]")
+        if scope == "all":
+            console.print(f"\n{APPDATA_GUIDANCE}")
+            console.print(f"\n{PAGEFILE_GUIDANCE}")
+        return
+
+    # Display findings
+    grand_total_bytes = 0
+    grand_total_files = 0
+
+    for label, plan in plans:
+        table = Table(title=f"{label} ({plan.total_files} files, {plan.total_mb:.1f} MB)")
+        table.add_column("File", style="cyan", max_width=50)
+        table.add_column("Size", justify="right", width=10)
+        table.add_column("Reason", style="dim", max_width=45)
+
+        # Show first 20 items, summarize the rest
+        for item in plan.items[:20]:
+            size_str = f"{item.size_bytes / 1024 / 1024:.1f} MB"
+            table.add_row(item.filename, size_str, item.reason)
+        if len(plan.items) > 20:
+            table.add_row(
+                f"... and {len(plan.items) - 20} more",
+                "", "",
+            )
+
+        console.print(table)
+        grand_total_bytes += plan.total_bytes
+        grand_total_files += plan.total_files
+
+    grand_mb = grand_total_bytes / 1024 / 1024
+    grand_gb = grand_total_bytes / 1024**3
+
+    console.print(
+        f"\n[bold]Total reclaimable: {grand_total_files} files, "
+        f"{grand_mb:.0f} MB ({grand_gb:.1f} GB)[/bold]",
+    )
+
+    if execute:
+        console.print("\n[yellow]Executing cleanup...[/yellow]")
+        log_path = cfg.mywork_root / "90_System" / "cleanup_log.jsonl"
+        total_deleted = 0
+        total_failed = 0
+
+        for label, plan in plans:
+            deleted, failed = execute_plan(plan, log_path, dry_run=False)
+            total_deleted += deleted
+            total_failed += failed
+            console.print(
+                f"  {label}: {deleted} deleted, {failed} failed",
+            )
+
+        console.print(
+            f"\n[bold]Done: {total_deleted} deleted, "
+            f"{total_failed} failed[/bold]",
+        )
+        console.print(f"  Log: {log_path}")
+    else:
+        console.print(
+            "\n[dim]This is a plan only. "
+            "Run with --execute to carry out deletions.[/dim]",
+        )
+
+    if scope == "all":
+        console.print(f"\n{APPDATA_GUIDANCE}")
+        console.print(f"\n{PAGEFILE_GUIDANCE}")
 
 
 # --- Audit ---
