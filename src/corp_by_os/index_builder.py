@@ -63,6 +63,56 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 );
 
+-- ============================================================
+-- NOTES TABLE — DO NOT REMOVE
+-- This indexes 1,972+ CKE-generated notes from the vault.
+-- Without this, corp query returns 0 results for note content.
+-- Added: 2026-03-12. If you see 0 notes after rebuild,
+-- this code was accidentally deleted.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    client TEXT,
+    title TEXT NOT NULL,
+    type TEXT,
+    source_type TEXT,
+    layer TEXT,
+    source TEXT,
+    topics TEXT,
+    products TEXT,
+    domains TEXT,
+    people TEXT,
+    confidentiality TEXT,
+    quality TEXT,
+    language TEXT,
+    date TEXT,
+    valid_to TEXT,
+    model TEXT,
+    tokens_used INTEGER,
+    content_origin TEXT,
+    source_category TEXT,
+    source_locator TEXT,
+    routing_confidence REAL,
+    confidence TEXT,
+    note_path TEXT NOT NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+    title, topics, products, domains, client, project_id,
+    content=notes, content_rowid=id
+);
+
+CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+    INSERT INTO notes_fts(rowid, title, topics, products, domains, client, project_id)
+    VALUES (new.id, new.title, new.topics, new.products, new.domains, new.client, new.project_id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+    INSERT INTO notes_fts(notes_fts, rowid, title, topics, products, domains, client, project_id)
+    VALUES ('delete', old.id, old.title, old.topics, old.products, old.domains, old.client, old.project_id);
+END;
+
 -- Triggers to keep FTS in sync with facts table
 CREATE TRIGGER IF NOT EXISTS facts_ai AFTER INSERT ON facts BEGIN
     INSERT INTO facts_fts(rowid, fact, source_title, topics, project_id)
@@ -109,6 +159,7 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
 
         # Clear existing data
         conn.execute("DELETE FROM facts")
+        conn.execute("DELETE FROM notes")
         conn.execute("DELETE FROM projects")
 
         projects_count = 0
@@ -132,8 +183,12 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
                     (n, pid),
                 )
 
-        # Rebuild FTS
+        # Index CKE-generated notes from vault
+        notes_count = _index_cke_notes(conn, cfg.vault_path)
+
+        # Rebuild FTS for both facts and notes
         conn.execute("INSERT INTO facts_fts(facts_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')")
 
         # Update meta
         now = datetime.now().isoformat(timespec="seconds")
@@ -150,6 +205,10 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
             (str(facts_count),),
         )
         conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES ('total_notes', ?)",
+            (str(notes_count),),
+        )
+        conn.execute(
             "INSERT OR REPLACE INTO meta VALUES ('rebuild_duration_seconds', ?)",
             (f"{duration:.2f}",),
         )
@@ -157,13 +216,14 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
 
         path = db_path or get_index_path()
         logger.info(
-            "Index rebuilt: %d projects, %d facts in %.1fs -> %s",
-            projects_count, facts_count, duration, path,
+            "Index rebuilt: %d projects, %d facts, %d notes in %.1fs -> %s",
+            projects_count, facts_count, notes_count, duration, path,
         )
 
         return IndexStats(
             projects_indexed=projects_count,
             facts_indexed=facts_count,
+            notes_indexed=notes_count,
             rebuild_duration=duration,
             index_path=str(path),
         )
@@ -431,3 +491,99 @@ def _load_and_insert_facts(
             total += 1
 
     return total
+
+
+# ============================================================
+# NOTES INDEXING — DO NOT REMOVE
+# Scans vault for CKE-generated markdown notes, indexes into
+# notes + notes_fts tables for full-text search.
+# ============================================================
+
+
+def _parse_frontmatter(filepath: Path) -> dict | None:
+    """Extract YAML frontmatter from a markdown file."""
+    try:
+        text = filepath.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+    if not text.startswith("---"):
+        return None
+    end = text.find("---", 3)
+    if end == -1:
+        return None
+    try:
+        return yaml.safe_load(text[3:end])
+    except Exception:
+        return None
+
+
+def _index_cke_notes(conn: sqlite3.Connection, vault_root: Path) -> int:
+    """Scan vault for CKE-generated notes and index into notes table.
+
+    Scans 02_sources/ and 04_evergreen/_generated/ for markdown files
+    with YAML frontmatter containing at least a 'title' field.
+    """
+    count = 0
+    scan_dirs = [
+        vault_root / "02_sources",
+        vault_root / "04_evergreen" / "_generated",
+    ]
+
+    for scan_dir in scan_dirs:
+        if not scan_dir.exists():
+            continue
+        for md_file in scan_dir.rglob("*.md"):
+            fm = _parse_frontmatter(md_file)
+            if not fm or "title" not in fm:
+                continue
+
+            project_id = fm.get("project", "")
+            if not project_id and "04_evergreen" in str(md_file):
+                # Synthetic project_id for evergreen notes
+                parts = md_file.relative_to(vault_root).parts
+                project_id = "_" + "_".join(parts[1:3]) if len(parts) > 2 else "_evergreen"
+
+            def _join_list(val: object) -> str:
+                return ", ".join(val) if isinstance(val, list) else ""
+
+            conn.execute(
+                """INSERT INTO notes
+                   (project_id, client, title, type, source_type, layer,
+                    source, topics, products, domains, people,
+                    confidentiality, quality, language, date, valid_to,
+                    model, tokens_used,
+                    content_origin, source_category, source_locator,
+                    routing_confidence, confidence, note_path)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    project_id,
+                    fm.get("client", ""),
+                    fm.get("title", ""),
+                    fm.get("type", ""),
+                    fm.get("source_type", ""),
+                    fm.get("layer", ""),
+                    fm.get("source", ""),
+                    _join_list(fm.get("topics", [])),
+                    _join_list(fm.get("products", [])),
+                    _join_list(fm.get("domains", [])),
+                    _join_list(fm.get("people", [])),
+                    fm.get("confidentiality", ""),
+                    fm.get("quality", ""),
+                    fm.get("language", ""),
+                    fm.get("date", ""),
+                    fm.get("valid_to", ""),
+                    fm.get("model", ""),
+                    fm.get("tokens_used", 0),
+                    fm.get("content_origin", ""),
+                    fm.get("source_category", ""),
+                    fm.get("source_locator", ""),
+                    fm.get("routing_confidence"),
+                    fm.get("trust_level", "extracted"),
+                    str(md_file),
+                ),
+            )
+            count += 1
+
+    conn.commit()
+    logger.info("Indexed %d CKE notes from vault", count)
+    return count

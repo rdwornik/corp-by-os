@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS notes (
     source_category TEXT,
     source_locator TEXT,
     routing_confidence REAL,
+    confidence TEXT,
     note_path TEXT NOT NULL
 );
 

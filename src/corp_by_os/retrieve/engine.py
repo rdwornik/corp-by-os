@@ -50,6 +50,27 @@ class RetrievedNote:
     content: str
     relevance_score: float
     citation: str
+    confidence: str = "extracted"
+    extracted_at: str = ""
+    overlay_data: dict = field(default_factory=dict)
+
+
+CONFIDENCE_BOOST: dict[str, float] = {
+    "verified": 0,
+    "extracted": 10,
+    "generated": 50,
+    "draft": 100,
+}
+
+
+def _apply_confidence_ranking(
+    notes: list[RetrievedNote],
+) -> list[RetrievedNote]:
+    """Rerank by combining BM25 relevance with confidence trust level."""
+    for note in notes:
+        boost = CONFIDENCE_BOOST.get(note.confidence, 10)
+        note.relevance_score = note.relevance_score + boost
+    return sorted(notes, key=lambda n: n.relevance_score)
 
 
 @dataclass
@@ -143,6 +164,7 @@ def retrieve(
                 n.id, n.title, n.client, n.project_id,
                 n.topics, n.products, n.domains,
                 n.source_type, n.type, n.note_path,
+                n.confidence,
                 rank
             FROM notes_fts f
             JOIN notes n ON f.rowid = n.id
@@ -170,6 +192,7 @@ def retrieve(
                     n.id, n.title, n.client, n.project_id,
                     n.topics, n.products, n.domains,
                     n.source_type, n.type, n.note_path,
+                    n.confidence,
                     999 as rank
                 FROM notes n
                 WHERE n.client LIKE ?
@@ -195,10 +218,15 @@ def retrieve(
 
             note_path = Path(row["note_path"])
             content = _load_note_content(note_path)
+            meta = _load_note_metadata(note_path)
 
             topics = _parse_json_field(row["topics"])
             products = _parse_json_field(row["products"])
             domains = _parse_json_field(row["domains"])
+
+            # confidence: prefer DB column, fall back to frontmatter
+            db_confidence = row["confidence"] if "confidence" in row.keys() else None
+            confidence = db_confidence or meta.get("confidence", "extracted")
 
             citation = (
                 f"[{row['title']}] "
@@ -220,8 +248,12 @@ def retrieve(
                 content=content,
                 relevance_score=float(row["rank"]),
                 citation=citation,
+                confidence=confidence,
+                extracted_at=meta.get("extracted_at", ""),
+                overlay_data=meta.get("overlay_data", {}),
             ))
 
+        notes = _apply_confidence_ranking(notes)
         sufficient = len(notes) >= min_results_for_sufficient
         coverage_gaps = _find_coverage_gaps(query, filters, notes)
 
@@ -290,6 +322,44 @@ def _load_note_content(note_path: Path) -> str:
     return text.strip()
 
 
+def _load_note_metadata(note_path: Path) -> dict:
+    """Load frontmatter metadata including overlay data."""
+    try:
+        text = note_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
+
+    try:
+        import yaml
+
+        fm = yaml.safe_load(text[3:end])
+        if not isinstance(fm, dict):
+            return {}
+    except Exception:
+        return {}
+
+    overlay_data = {}
+    for key in fm:
+        if key.endswith("_overlay"):
+            overlay_data[key] = fm[key]
+
+    return {
+        "confidence": fm.get("trust_level") or fm.get("confidence_level", "extracted"),
+        "extracted_at": str(fm.get("extracted_at", "")),
+        "extraction_version": fm.get("extraction_version", 1),
+        "depth": fm.get("depth", "standard"),
+        "doc_type": fm.get("doc_type", "general"),
+        "key_facts": fm.get("key_facts", []),
+        "overlay_data": overlay_data,
+    }
+
+
 def _parse_json_field(raw: str | None) -> list[str]:
     """Parse a JSON array string from the notes table."""
     if not raw:
@@ -328,6 +398,7 @@ def _fallback_search(
         SELECT n.id, n.title, n.client, n.project_id,
                n.topics, n.products, n.domains,
                n.source_type, n.type, n.note_path,
+               n.confidence,
                0 as rank
         FROM notes n
         WHERE {where}
