@@ -31,6 +31,7 @@ Commands:
     corp retrieve "query" [--client X] [--product Y] [--top N]
     corp prep <client> [--model M] [--output DIR]
     corp rfp answer "question" [--client X] [--product Y] [--model M]
+    corp freshness [--verbose]
 """
 
 from __future__ import annotations
@@ -1151,6 +1152,9 @@ def _run_folder_extraction(
     )
     state.close()
 
+    # --- Freshness phase (appended, non-fatal) ---
+    _run_freshness_phase(cfg)
+
 
 def _update_folder_file_statuses(
     state: "OvernightState",  # noqa: F821
@@ -1315,6 +1319,70 @@ def _run_full_reshape(
     report = monitor.write_morning_report(state)
     console.print(f"\n[dim]Report: {report}[/dim]")
     state.close()
+
+    # --- Freshness phase (appended, non-fatal) ---
+    _run_freshness_phase(cfg)
+
+
+def _run_freshness_phase(cfg: "AppConfig") -> None:  # noqa: F821
+    """Run freshness scan as a non-fatal overnight phase.
+
+    Scans vault notes against source files, writes report to 90_System.
+    """
+    import json as _json
+
+    from corp_by_os.freshness.scanner import scan_vault_freshness
+
+    console.print("\n[bold]Freshness scan...[/bold]")
+    try:
+        summary = scan_vault_freshness(cfg.vault_path, cfg.mywork_root)
+    except Exception as exc:
+        console.print(f"  [red]Freshness scan failed: {exc}[/red]")
+        logger.exception("Freshness scan failed")
+        return
+
+    console.print(
+        f"  Scanned: {summary.total_scanned} | "
+        f"Fresh: {summary.fresh} | "
+        f"Stale: {summary.stale} | "
+        f"Orphaned: {summary.orphaned} | "
+        f"Review due: {summary.review_due}",
+    )
+
+    if summary.no_source:
+        console.print(f"  [dim]Legacy (no source): {summary.no_source}[/dim]")
+    if summary.errors:
+        console.print(f"  [yellow]Errors: {summary.errors}[/yellow]")
+
+    # Save report
+    report_dir = cfg.mywork_root / "90_System"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "freshness_report.json"
+
+    report_data = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "total_scanned": summary.total_scanned,
+        "fresh": summary.fresh,
+        "stale": summary.stale,
+        "orphaned": summary.orphaned,
+        "review_due": summary.review_due,
+        "no_source": summary.no_source,
+        "errors": summary.errors,
+        "issues": [
+            {
+                "note_path": r.note_path,
+                "source_path": r.source_path,
+                "status": r.status,
+                "reason": r.reason,
+            }
+            for r in summary.results
+            if r.status not in ("fresh", "no_source")
+        ],
+    }
+    report_path.write_text(
+        _json.dumps(report_data, indent=2), encoding="utf-8",
+    )
+    console.print(f"  [dim]Report: {report_path}[/dim]")
 
 
 def _write_reshape_plan(
@@ -2223,6 +2291,81 @@ def prep_cmd(client: str, model: str, output: str | None) -> None:
             f"\n[red]Warning: Limited knowledge about {client}. "
             f"Briefing may be incomplete.[/red]",
         )
+
+
+# --- Freshness ---
+
+
+@cli.command("freshness")
+@click.option("--verbose", is_flag=True, help="Show all results, not just issues")
+def freshness_cmd(verbose: bool) -> None:
+    """Check freshness of vault notes against source files.
+
+    Scans all vault notes and reports which ones are stale,
+    orphaned, or due for review.
+
+    Examples:
+
+        corp freshness
+
+        corp freshness --verbose
+    """
+    from corp_by_os.freshness.scanner import scan_vault_freshness
+
+    cfg = get_config()
+
+    console.print("[bold]Scanning vault freshness...[/bold]")
+    summary = scan_vault_freshness(cfg.vault_path, cfg.mywork_root)
+
+    # Summary panel
+    console.print(
+        f"\n  Scanned: {summary.total_scanned} notes\n"
+        f"  Fresh: [green]{summary.fresh}[/green] | "
+        f"Stale: [red]{summary.stale}[/red] | "
+        f"Orphaned: [red]{summary.orphaned}[/red] | "
+        f"Review due: [yellow]{summary.review_due}[/yellow] | "
+        f"No source: [dim]{summary.no_source}[/dim] | "
+        f"Errors: [yellow]{summary.errors}[/yellow]",
+    )
+
+    # Issues table
+    issues = [
+        r for r in summary.results if r.status not in ("fresh", "no_source")
+    ]
+
+    if verbose:
+        display = summary.results
+    else:
+        display = issues
+
+    if not display:
+        console.print("\n[green]All notes are fresh.[/green]")
+        return
+
+    table = Table(title="Freshness Results" if verbose else "Issues Found")
+    table.add_column("Status", style="bold", width=12)
+    table.add_column("Note", no_wrap=True)
+    table.add_column("Reason")
+
+    status_styles = {
+        "stale": "red",
+        "orphaned": "red",
+        "review_due": "yellow",
+        "error": "yellow",
+        "fresh": "green",
+        "no_source": "dim",
+    }
+
+    for r in display:
+        style = status_styles.get(r.status, "")
+        note_name = Path(r.note_path).name
+        table.add_row(
+            f"[{style}]{r.status}[/{style}]",
+            note_name,
+            r.reason,
+        )
+
+    console.print(table)
 
 
 # --- RFP ---
