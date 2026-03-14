@@ -1,0 +1,144 @@
+# content_registry.yaml — Knowledge routing rules
+# Human-editable. Corp-by-os reads this for ingest routing decisions.
+# Auto-discovered patterns are proposed via `corp registry review`, not written here directly.
+
+version: "1.0"
+
+# Known content series — recurring content with predictable patterns
+series:
+  cognitive_friday:
+    display_name: "Cognitive Friday"
+    description: "Weekly internal training series on BY Cognitive products"
+    destination: "60_Source_Library/02_Training_Enablement/Cognitive_Friday"
+    naming_patterns:
+      - "Cognitive_Friday*"
+      - "Cognitive_Fridays*"
+      - "CF_S[0-9]*"
+    expected_extensions: [".mp4", ".pptx"]
+    default_metadata:
+      source_category: training
+      topics: ["Cognitive Planning", "AI/ML"]
+      products: ["Cognitive Demand Planning"]
+
+  lighthouse_program:
+    display_name: "Lighthouse Program"
+    description: "Internal enablement program recordings"
+    destination: "60_Source_Library/02_Training_Enablement/Lighthouse"
+    naming_patterns:
+      - "Lighthouse*"
+      - "LHP_*"
+    expected_extensions: [".mp4", ".pptx", ".docx"]
+    default_metadata:
+      source_category: training
+      topics: ["Platform", "Enablement"]
+
+  presales_training_milan:
+    display_name: "Pre-Sales Training Milan"
+    description: "EMEA pre-sales enablement training (April 2024)"
+    destination: "60_Source_Library/02_Training_Enablement/Pre_Sales_Training_Milan"
+    naming_patterns:
+      - "*Pre-Sales*training*"
+      - "*Pre-sales*training*"
+      - "*Enablement*Training*"
+    expected_extensions: [".mp4", ".pptx", ".docx"]
+    default_metadata:
+      source_category: training
+      topics: ["Cognitive Planning", "Enablement"]
+
+# Destination rules — maps file characteristics to destinations
+# Applied when no series match is found
+destination_rules:
+  - name: "RFP databases"
+    match:
+      filename_contains: ["RFP_Database", "WMS_RFP_Database"]
+      extensions: [".xlsx", ".csv"]
+    destination: "50_RFP/_databases"
+    metadata:
+      source_category: rfp
+
+  - name: "Security compliance docs"
+    match:
+      filename_contains: ["ISO_27001", "SOC_2", "Security_Whitepaper", "Cloud_Services_Standards"]
+      extensions: [".pdf"]
+    destination: "50_RFP/Certificate"
+    metadata:
+      source_category: security_compliance
+
+  - name: "Service descriptions"
+    match:
+      filename_contains: ["Service_Description", "Service Description"]
+      extensions: [".pdf"]
+    destination: "30_Templates/90_Reference_Baselines"
+    metadata:
+      source_category: product_doc
+
+  - name: "Product documentation"
+    match:
+      filename_contains: ["Architecture", "Data_Requirements", "Platform"]
+      extensions: [".pdf", ".pptx", ".docx"]
+      folder_hint: "01_Product_Docs"
+    destination: "60_Source_Library/01_Product_Docs"
+    metadata:
+      source_category: product_doc
+
+  - name: "Competitive materials"
+    match:
+      filename_contains: ["Differentiation", "Competitive", "sustainability"]
+      extensions: [".pdf", ".pptx"]
+    destination: "60_Source_Library/03_Competitive"
+    metadata:
+      source_category: competitive
+
+  - name: "Meeting recordings"
+    match:
+      filename_contains: ["Meeting_Recording", "Recording"]
+      extensions: [".mp4"]
+    destination: "10_Projects/{inferred_client}"
+    metadata:
+      source_category: meeting
+
+# Client/project name patterns for auto-detection
+# Used by heuristic router to match filenames to existing projects
+client_patterns:
+  - pattern: "SGDBF|Saint.Gobain"
+    project: "SGDBF_Retail"
+  - pattern: "Lenzing"
+    project: "Lenzing_Planning"
+  - pattern: "Penguin|PRHGE"
+    project: "Penguin_Random_House_WMS_TMS"
+  - pattern: "Alfa.Laval"
+    project: "Alfa_Laval_Planning"
+  - pattern: "CCI|Coca.Cola"
+    project: "CCI_Planning"
+  - pattern: "Wurth|W\u00fcrth"
+    project: "Wurth_Retail"
+  - pattern: "Jaguar|JLR"
+    project: "Jaguar_Land_Rover_TMS_WMS_OMS"
+  - pattern: "Stellantis|Mopar"
+    project: "Stellantis_Mopar_E2E"
+  - pattern: "Honda"
+    project: "Honda_Planning"
+  - pattern: "Deichmann"
+    project: "Deichmann_Network"
+  - pattern: "Michelin"
+    project: "Michelin_Planning"
+  - pattern: "PepsiCo"
+    project: "PepsiCo_Planning"
+  - pattern: "Zabka|[ZŻ]abka"
+    project: "Zabka_CatMan"
+  - pattern: "Rossmann"
+    project: "Rossmann_Migration"
+  - pattern: "Almarai"
+    project: "Almarai_Planning"
+  - pattern: "Safilo"
+    project: "Safilo_Planning"
+  - pattern: "NEOM"
+    project: "NEOM_WMS"
+  - pattern: "Veronesi"
+    project: "Veronesi_Planning"
+
+# Fallback rules when nothing matches
+fallback:
+  unknown_destination: "00_Inbox/_Unmatched"
+  confidence_threshold: 0.75   # below this -> staging, not auto-route
+  llm_escalation_threshold: 0.50  # below this -> escalate to Gemini
