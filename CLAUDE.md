@@ -141,8 +141,8 @@ py -m pytest -k "test_query"  # run specific tests
 
 ## Known issues
 
-- Modules with limited test coverage: `audit.py`, `chat.py` (LLM-dependent)
-- Legacy code in `src/_cli_v1_old/`, `src/agents/`, `src/core/`, `src/services/` — not part of main `corp_by_os` package
+- **No test coverage** for: `config.py`, `cli.py`, `models.py`, `__main__.py`, `overnight/cke_client.py`, `extraction/vault_writer.py`
+- Legacy code in `src/_cli_v1_old/`, `src/agents/`, `src/core/`, `src/services/` — not part of main `corp_by_os` package, candidates for removal
 - No CI pipeline yet — tests run locally only
 
 ---
