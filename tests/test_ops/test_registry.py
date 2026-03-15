@@ -100,6 +100,12 @@ class TestSeriesMatch:
         assert result.method == "series"
         assert result.destination == "60_Source_Library/02_Training_Enablement/Cognitive_Friday"
 
+    def test_match_cognitive_friday_space(self, registry: ContentRegistry) -> None:
+        """Filename with spaces matches underscore pattern."""
+        result = registry.match_file("Cognitive Fridays Session 12.mp4", ".mp4")
+        assert result.matched is True
+        assert result.series_id == "cognitive_friday"
+
     def test_match_cognitive_friday_variant(self, registry: ContentRegistry) -> None:
         """CF_S prefix matches Cognitive Friday series."""
         result = registry.match_file("CF_S15_New_Feature.pptx", ".pptx")
@@ -246,6 +252,19 @@ class TestFolderMatch:
     def test_match_folder(self, registry: ContentRegistry) -> None:
         """Folder name matching for package routing."""
         result = registry.match_folder("Cognitive_Friday_S15")
+        assert result.matched is True
+        assert result.series_id == "cognitive_friday"
+
+    def test_match_folder_space_underscore(self, registry: ContentRegistry) -> None:
+        """Folder 'Cognitive Fridays' (space) matches 'Cognitive_Fridays*' pattern."""
+        result = registry.match_folder("Cognitive Fridays")
+        assert result.matched is True
+        assert result.series_id == "cognitive_friday"
+        assert result.confidence == 0.95
+
+    def test_match_folder_case_insensitive(self, registry: ContentRegistry) -> None:
+        """Folder matching is case-insensitive."""
+        result = registry.match_folder("cognitive friday s15")
         assert result.matched is True
         assert result.series_id == "cognitive_friday"
 

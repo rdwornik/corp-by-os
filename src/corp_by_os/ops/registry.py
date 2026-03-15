@@ -137,12 +137,18 @@ class ContentRegistry:
 
     # === Internal matching ===
 
+    @staticmethod
+    def _normalize(name: str) -> str:
+        """Normalize name for matching: lowercase, spaces -> underscores."""
+        return name.lower().replace(" ", "_")
+
     def _match_series(self, filename: str) -> RegistryMatch:
         """Check filename against all series naming patterns."""
+        norm_name = self._normalize(filename)
         for series_id, series_def in self.data.get("series", {}).items():
             patterns = series_def.get("naming_patterns", [])
             for pattern in patterns:
-                if fnmatch(filename, pattern):
+                if fnmatch(norm_name, self._normalize(pattern)):
                     return RegistryMatch(
                         matched=True,
                         destination=series_def.get("destination"),
@@ -192,10 +198,11 @@ class ContentRegistry:
             if allowed_exts and ext_lower not in allowed_exts:
                 continue
 
-            # Filename substring check
+            # Filename substring check (normalized for space/underscore equivalence)
             filename_contains = match_spec.get("filename_contains", [])
             if filename_contains:
-                if not any(sub in filename for sub in filename_contains):
+                norm_fn = self._normalize(filename)
+                if not any(self._normalize(sub) in norm_fn for sub in filename_contains):
                     continue
 
             # Folder hint check — boosts confidence when folder matches,
