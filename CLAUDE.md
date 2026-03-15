@@ -1,155 +1,174 @@
-# CLAUDE.md — Engineering Principles & Agent Behavior
+# CLAUDE.md — corp-by-os
 
-> **Purpose:** Drop this file into any project root to anchor Claude Code sessions to disciplined engineering process. Paste relevant sections into chat context when the agent loses focus.
->
-> **Source:** Boris Cherny's Claude Code rules + Rob's dev standards. Last updated: 2026-02-24.
+## What this repo does
 
----
+Root orchestrator for the Corporate OS agent ecosystem. CLI tool (`corp`) that manages knowledge extraction, project tracking, vault I/O, template selection, cleanup, and retrieval across a pre-sales engineer's OneDrive + Obsidian vault workflow.
 
-## Workflow Orchestration
+## Quick start
 
-### 1. Plan Mode Default
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
-- If something goes sideways, STOP and re-plan immediately — don't keep pushing
-- Use plan mode for verification steps, not just building
-- Write detailed specs upfront to reduce ambiguity
+```bash
+# Install (editable, with dev deps)
+pip install -e ".[dev]"
 
-### 2. Subagent Strategy
-- Use subagents liberally to keep main context window clean
-- Offload research, exploration, and parallel analysis to subagents
-- For complex problems, throw more compute at it via subagents
-- One task per subagent for focused execution
+# Configure environment
+cp .env.example .env   # set VAULT_PATH, PROJECTS_ROOT, etc.
 
-### 3. Self-Improvement Loop
-- After ANY correction from the user: update `tasks/lessons.md` with the pattern
-- Write rules for yourself that prevent the same mistake
-- Ruthlessly iterate on these lessons until mistake rate drops
-- Review lessons at session start for relevant project
+# Run tests
+py -m pytest
 
-### 4. Verification Before Done
-- Never mark a task complete without proving it works
-- Diff behavior between main and your changes when relevant
-- Ask yourself: "Would a staff engineer approve this?"
-- Run tests, check logs, demonstrate correctness
+# Use CLI
+corp project list
+corp query "WMS implementation"
+corp doctor
+```
 
-### 5. Demand Elegance (Balanced)
-- For non-trivial changes: pause and ask "is there a more elegant way?"
-- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
-- Skip this for simple, obvious fixes — don't over-engineer
-- Challenge your own work before presenting it
+## Architecture
 
-### 6. Autonomous Bug Fixing
-- When given a bug report: just fix it. Don't ask for hand-holding
-- Point at logs, errors, failing tests — then resolve them
-- Zero context switching required from the user
-- Go fix failing CI tests without being told how
+```
+src/corp_by_os/
+  cli.py              # Click CLI root — all commands
+  config.py           # AppConfig from .env + config/agents.yaml
+  models.py           # Dataclasses: ProjectInfo, Task, Workflow, VaultZone, etc.
+  vault_io.py         # Single writer to Obsidian vault (zone-aware, idempotent)
+  query_engine.py     # SQLite FTS5 search over facts/projects
+  index_builder.py    # Builds index.db in %LOCALAPPDATA%/corp-by-os/
+  workflow_engine.py  # Executes multi-step workflows from workflows.yaml
+  intent_router.py    # Two-stage routing: keyword match → LLM fallback
+  llm_router.py       # Gemini Flash integration (google-genai SDK)
+  project_resolver.py # Fuzzy project name resolution
+  template_manager.py # Template scanning, registration, selection
+  task_manager.py     # Task CRUD via vault notes
+  audit.py            # Read-only MyWork audit with LLM analysis
+  built_in_actions.py # Python-callable workflow actions
 
----
+  cleanup/            # OneDrive cleanup: scan → classify → propose → execute
+  doctor/             # System integrity checks (vault, index, ops.db)
+  extraction/         # Non-project file extraction pipeline
+  freshness/          # Source-tracking vault note staleness scanner
+  ingest/             # Intelligent file routing and extraction
+  overnight/          # Fire-and-forget: extract + reshape + freshness
+  ops/                # Operational state: asset tracking, ingest events
+  retrieve/           # Unified retrieval: prep decks, RFP answers, discovery
+```
 
-## Task Management
+### Data flow
 
-1. **Plan First:** Write plan to `tasks/todo.md` with checkable items
-2. **Verify Plan:** Check in before starting implementation
-3. **Track Progress:** Mark items complete as you go
-4. **Explain Changes:** High-level summary at each step
-5. **Document Results:** Add review section to `tasks/todo.md`
-6. **Capture Lessons:** Update `tasks/lessons.md` after corrections
+- **OneDrive** (`MyWork/`) → source files, templates, projects
+- **Obsidian vault** → extracted notes, dashboards, tasks (zone-based mutability)
+- **SQLite index** (`%LOCALAPPDATA%/corp-by-os/index.db`) → FTS5 search over facts
+- **ops.db** → asset tracking, ingest events, content routing state
 
----
+### Key design decisions
 
-## Core Principles
+- Index lives in `%LOCALAPPDATA%`, never OneDrive (sync corruption risk)
+- Vault zones have mutability rules: `02_sources` is immutable, `00_dashboards` is regenerable
+- Two-stage intent routing: keyword match first (fast, free), LLM fallback only when needed
+- Dataclasses, not Pydantic (lightweight, frozen where appropriate)
 
-- **Simplicity First:** Make every change as simple as possible. Impact minimal code.
-- **No Laziness:** Find root causes. No temporary fixes. Senior developer standards.
-- **Minimal Impact:** Changes should only touch what's necessary. Avoid introducing bugs.
+## Dev standards
 
----
+- Python 3.11+, Windows-first (`py -m`, `pathlib`)
+- `pyproject.toml` as single source of truth for deps
+- `ruff` lint + format, `pytest` for testing
+- Feature branches, never commit directly to master
+- Logging not print, dataclasses not dicts
+- Config via `.env` + `config/agents.yaml` — never hardcode paths
+- Click CLI, Rich terminal output
+- Type hints everywhere, no bare `except:`
 
-## Architecture & Code Standards
+## Key commands
 
-### Structure
-- **Clean architecture** — single-responsibility modules, clear separation of concerns
-- **Config over hardcoding** — all paths, URLs, credentials, environment-specific values go in YAML config files (never hardcoded)
-- **Dataclasses over dicts** — typed data structures, not loose dictionaries
-- **`.env` files** for secrets and dynamic paths — never commit these
-- **README.md** in every project root — purpose, setup, usage, architecture overview
+```bash
+# Project management
+corp project list [--status active]
+corp project show <name>
 
-### Code Quality
-- **Logging, not print** — use Python `logging` module with appropriate levels
-- **Comments** — explain *why*, not *what*. Document non-obvious decisions
-- **Type hints** everywhere in Python
-- **Error handling** — explicit, meaningful error messages. No bare `except:`
+# Knowledge retrieval
+corp query "search terms" [--project X] [--product Y]
+corp retrieve "query" [--client X] [--format json|table]
+corp prep <client> [--model M]
+corp rfp answer "question" [--client X]
 
-### CLI & Output
-- **Click** for CLI interfaces
-- **Rich** for terminal output (tables, progress bars, panels)
+# Vault & index
+corp vault validate [--project X]
+corp index rebuild [--project X]
+corp index stats
+corp analytics
 
-### Testing & Verification
-- **pytest** as test framework
-- Write tests before marking anything done
-- Test edge cases, not just happy paths
-- If you can't test it, you can't ship it
+# Extraction & processing
+corp extract [--project X]
+corp ingest [--project X]
+corp overnight [--dry-run]
+corp freshness [--verbose]
 
-### Git Workflow
-- **Feature branches** — never commit directly to main
-- Meaningful commit messages (imperative mood: "Add X", "Fix Y")
-- Small, focused commits — one logical change per commit
+# Maintenance
+corp doctor
+corp cleanup [--scope all|duplicates] [--execute]
+corp audit [--budget 0.30]
 
----
+# Templates & tasks
+corp template list | scan | select "goal"
+corp task add "Title" [--project X] [--priority high]
+corp tasks [--status todo]
 
-## Knowledge Management (Obsidian)
+# Interactive
+corp chat [--no-llm]
+corp run <workflow> [PARAMS]
+```
 
-- YAML frontmatter on all notes
-- Sparse `[[wikilinks]]` in text — max 2-3 per paragraph
-- Source/extract separation: source notes are immutable, extracts are regenerable
-- `_meta.yaml` for versioning metadata
+## Test suite
 
----
+```bash
+py -m pytest           # run all tests
+py -m pytest -x        # stop on first failure
+py -m pytest -k "test_query"  # run specific tests
+```
 
-## Communication Style
+- **679 tests passing**, 1 skipped (as of 2026-03-15)
+- Full coverage of: query engine, index builder, workflow engine, intent router, LLM router, vault I/O, template manager, project resolver, task manager, cleanup, doctor, freshness, ingest, overnight, retrieval, extraction
+- Tests use `tmp_path` fixtures and monkeypatching — no real filesystem or API calls
 
-- **Insight-first** — lead with the "so what", not a description of what you did
-- **Bold-first paragraphs** for scanning
-- **No corporate filler** — cut fluff words, be direct
-- **Critical thinking** — challenge assumptions, flag risks, present tradeoffs
-- **ADHD-optimized** — scannable, structured, front-loaded with the important bits
+## Dependencies
 
----
-
-## Anti-Patterns (Never Do These)
-
-| Anti-Pattern | Do Instead |
+| Package | Purpose |
 |---|---|
-| Hardcoded paths/URLs | YAML config + `.env` |
-| `print()` debugging | `logging.debug()` / `logging.info()` |
-| Raw dicts for data | Dataclasses with type hints |
-| Committing to main | Feature branch → PR |
-| "It works on my machine" | Tests + CI verification |
-| Asking "should I fix it?" | Just fix it, show the diff |
-| Vague commit messages | "Fix rate limiter edge case in retry logic" |
-| Temporary workarounds | Root cause analysis → proper fix |
-| Over-engineering simple tasks | Proportional effort to problem size |
-| Losing context mid-task | `tasks/todo.md` + `tasks/lessons.md` |
+| `click` | CLI framework |
+| `rich` | Terminal UI (tables, panels, progress) |
+| `pyyaml` | YAML config/data parsing |
+| `python-dotenv` | `.env` file loading |
+| `corp-os-meta` | Shared metadata schemas (local package) |
+| `google-genai` | Gemini Flash LLM (optional, `pip install -e ".[llm]"`) |
+
+## Known issues
+
+- Modules with limited test coverage: `audit.py`, `chat.py` (LLM-dependent)
+- Legacy code in `src/_cli_v1_old/`, `src/agents/`, `src/core/`, `src/services/` — not part of main `corp_by_os` package
+- No CI pipeline yet — tests run locally only
 
 ---
 
-## Quick-Paste Snippets
+## Agent behavior rules
 
-### Session Start Reminder
-```
-Before starting: read tasks/lessons.md and tasks/todo.md. Plan mode for anything non-trivial. Feature branch. Tests. Logging. Config in YAML. Go.
-```
+### Workflow
+1. Plan mode for non-trivial tasks (3+ steps)
+2. Use subagents for research and parallel analysis
+3. After corrections: update `tasks/lessons.md`
+4. Never mark done without proving it works
+5. Feature branches, meaningful commits
 
-### Mid-Session Course Correction
-```
-STOP. You're drifting. Re-read CLAUDE.md core principles: simplicity first, no laziness, minimal impact. Re-plan in plan mode before continuing.
-```
+### Core principles
+- **Simplicity first** — minimal code impact
+- **No laziness** — find root causes, no temp fixes
+- **Minimal impact** — only touch what's necessary
+- **Just fix it** — don't ask permission for obvious fixes
 
-### Pre-Commit Checklist
-```
-Before marking done: tests pass? Logs clean? Diff reviewed? Staff engineer would approve? Config externalized? README updated if needed?
-```
+### Anti-patterns
 
----
-
-*This document is a living reference. Update it as patterns evolve.*
+| Don't | Do |
+|---|---|
+| Hardcoded paths | `.env` + YAML config |
+| `print()` | `logging` module |
+| Raw dicts | Dataclasses with type hints |
+| Commit to master | Feature branch |
+| Vague commits | "Fix rate limiter edge case in retry logic" |
+| Over-engineer | Proportional effort to problem size |
