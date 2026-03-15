@@ -77,15 +77,17 @@ def _parse_workflow(wf_id: str, data: dict[str, Any]) -> Workflow:
     steps: list[WorkflowStep] = []
     for step_data in data.get("steps", []):
         step_type = _infer_step_type(step_data)
-        steps.append(WorkflowStep(
-            type=step_type,
-            description=step_data.get("description", ""),
-            agent=step_data.get("agent"),
-            command=step_data.get("command"),
-            conditional_args=step_data.get("conditional_args"),
-            action=step_data.get("action"),
-            params=step_data.get("params", {}),
-        ))
+        steps.append(
+            WorkflowStep(
+                type=step_type,
+                description=step_data.get("description", ""),
+                agent=step_data.get("agent"),
+                command=step_data.get("command"),
+                conditional_args=step_data.get("conditional_args"),
+                action=step_data.get("action"),
+                params=step_data.get("params", {}),
+            )
+        )
 
     return Workflow(
         id=wf_id,
@@ -137,12 +139,14 @@ def execute_workflow(
                 return WorkflowResult(
                     workflow_id=workflow.id,
                     success=False,
-                    steps=[StepResult(
-                        step_index=0,
-                        description="Parameter validation",
-                        success=False,
-                        error=f"Missing required parameter: {param_name}",
-                    )],
+                    steps=[
+                        StepResult(
+                            step_index=0,
+                            description="Parameter validation",
+                            success=False,
+                            error=f"Missing required parameter: {param_name}",
+                        )
+                    ],
                     duration_seconds=time.time() - start,
                 )
 
@@ -153,12 +157,14 @@ def execute_workflow(
 
     for i, step in enumerate(workflow.steps):
         if dry_run:
-            step_results.append(StepResult(
-                step_index=i,
-                description=step.description,
-                success=True,
-                output="[dry-run] Would execute",
-            ))
+            step_results.append(
+                StepResult(
+                    step_index=i,
+                    description=step.description,
+                    success=True,
+                    output="[dry-run] Would execute",
+                )
+            )
             continue
 
         step_start = time.time()
@@ -297,7 +303,6 @@ def _execute_python_step(step: WorkflowStep, params: dict[str, str]) -> StepResu
             error=f"Unknown action: {action_name}",
         )
 
-    desc = _interpolate(step.description, params)
     # Merge step.params into workflow params (in-place so inter-step state propagates)
     params.update(step.params)
     return action_fn(params)

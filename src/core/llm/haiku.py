@@ -6,7 +6,6 @@ Requires ANTHROPIC_API_KEY in .env.
 """
 
 import logging
-from typing import Optional
 
 import anthropic
 
@@ -38,7 +37,7 @@ class HaikuClient:
     def complete(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 8192,
         temperature: float = 0.0,
     ) -> str:
@@ -54,7 +53,7 @@ class HaikuClient:
         return response.content[0].text
 
 
-_client: Optional[HaikuClient] = None
+_client: HaikuClient | None = None
 
 
 def get_client() -> HaikuClient:

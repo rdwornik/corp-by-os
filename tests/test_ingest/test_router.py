@@ -29,7 +29,9 @@ def mywork(tmp_path: Path) -> Path:
     inbox = tmp_path / "00_Inbox"
     inbox.mkdir()
     (tmp_path / "10_Projects").mkdir()
-    (tmp_path / "60_Source_Library" / "02_Training_Enablement" / "Cognitive_Friday").mkdir(parents=True)
+    (tmp_path / "60_Source_Library" / "02_Training_Enablement" / "Cognitive_Friday").mkdir(
+        parents=True
+    )
     (tmp_path / "50_RFP" / "_databases").mkdir(parents=True)
     return tmp_path
 
@@ -246,46 +248,69 @@ class TestComputeFileHash:
 
 class TestIngestFile:
     def test_series_match_routes_directly(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """File matching a series (high confidence) is routed directly."""
         inbox_file = mywork / "00_Inbox" / "Cognitive_Friday_S12.pptx"
         inbox_file.write_bytes(b"pptx content")
 
         result = ingest_file(
-            inbox_file, mywork, ops, registry, extract=False,
+            inbox_file,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "routed"
         assert result.match_method == "series"
         assert result.match_series == "cognitive_friday"
         assert result.confidence >= 0.9
-        assert result.destination_path == "60_Source_Library/02_Training_Enablement/Cognitive_Friday"
+        assert (
+            result.destination_path == "60_Source_Library/02_Training_Enablement/Cognitive_Friday"
+        )
         # File should have been moved
         assert not inbox_file.exists()
 
     def test_client_match_stages(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Client match (0.80 confidence, >= 0.75 threshold) is routed."""
         inbox_file = mywork / "00_Inbox" / "Lenzing_Notes.docx"
         inbox_file.write_bytes(b"docx content")
 
         result = ingest_file(
-            inbox_file, mywork, ops, registry, extract=False,
+            inbox_file,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "routed"
         assert result.match_method == "client"
         assert result.confidence == 0.80
 
     def test_no_match_quarantined(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Unrecognized file is quarantined to _Unmatched."""
         inbox_file = mywork / "00_Inbox" / "random_stuff.txt"
         inbox_file.write_bytes(b"random content")
 
         result = ingest_file(
-            inbox_file, mywork, ops, registry, extract=False,
+            inbox_file,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "quarantined"
         assert result.match_method == "none"
@@ -293,26 +318,39 @@ class TestIngestFile:
         assert result.destination_path == "00_Inbox/_Unmatched"
 
     def test_file_not_found(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Non-existent file returns error result."""
         result = ingest_file(
             mywork / "00_Inbox" / "ghost.pdf",
-            mywork, ops, registry, extract=False,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "error"
         assert result.error == "File not found"
 
     def test_dry_run_no_move(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Dry run matches but doesn't move files or update ops.db."""
         inbox_file = mywork / "00_Inbox" / "Cognitive_Friday_S15.mp4"
         inbox_file.write_bytes(b"mp4 content")
 
         result = ingest_file(
-            inbox_file, mywork, ops, registry,
-            extract=False, dry_run=True,
+            inbox_file,
+            mywork,
+            ops,
+            registry,
+            extract=False,
+            dry_run=True,
         )
         assert result.action == "routed"
         assert result.match_method == "series"
@@ -322,7 +360,10 @@ class TestIngestFile:
         assert ops.get_stats()["total_assets"] == 0
 
     def test_records_in_ops_db(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Routed file is recorded in ops.db with correct status."""
         inbox_file = mywork / "00_Inbox" / "Cognitive_Friday_S20.pptx"
@@ -335,7 +376,10 @@ class TestIngestFile:
         assert stats["total_events"] >= 1
 
     def test_ops_path_updated_after_move(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Regression: after move, asset path in ops.db reflects the new
         location so subsequent lookups (e.g. extraction) succeed."""
@@ -345,7 +389,9 @@ class TestIngestFile:
         ingest_file(inbox_file, mywork, ops, registry, extract=False)
 
         old_path = "00_Inbox/Cognitive_Friday_S25.pptx"
-        new_path = "60_Source_Library/02_Training_Enablement/Cognitive_Friday/Cognitive_Friday_S25.pptx"
+        new_path = (
+            "60_Source_Library/02_Training_Enablement/Cognitive_Friday/Cognitive_Friday_S25.pptx"
+        )
 
         # Old path should no longer exist in ops.db
         assert ops.get_asset(old_path) is None
@@ -356,7 +402,10 @@ class TestIngestFile:
         assert asset["routed_to"] == new_path
 
     def test_name_collision_handling(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """File with same name at destination gets a suffix."""
         dest = mywork / "00_Inbox" / "_Unmatched"
@@ -367,7 +416,11 @@ class TestIngestFile:
         inbox_file.write_bytes(b"new content")
 
         result = ingest_file(
-            inbox_file, mywork, ops, registry, extract=False,
+            inbox_file,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "quarantined"
         # Original should still exist, new file moved with suffix
@@ -380,14 +433,20 @@ class TestIngestFile:
 
 class TestIngestAll:
     def test_processes_all_inbox_files(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """ingest_all processes every file in 00_Inbox."""
         (mywork / "00_Inbox" / "Cognitive_Friday_S10.pptx").write_bytes(b"a")
         (mywork / "00_Inbox" / "random.txt").write_bytes(b"b")
 
         file_results, package_results = ingest_all(
-            mywork, ops, registry, extract=False,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert len(file_results) == 2
         assert len(package_results) == 0
@@ -396,7 +455,10 @@ class TestIngestAll:
         assert "quarantined" in actions
 
     def test_processes_folders_and_files(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """ingest_all returns both file and package results."""
         (mywork / "00_Inbox" / "loose.txt").write_bytes(b"loose")
@@ -405,7 +467,10 @@ class TestIngestAll:
         (sub / "inside.pdf").write_bytes(b"inside")
 
         file_results, package_results = ingest_all(
-            mywork, ops, registry, extract=False,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert len(file_results) == 1
         assert len(package_results) == 1
@@ -413,11 +478,17 @@ class TestIngestAll:
         assert package_results[0].folder_name == "Some_Folder"
 
     def test_empty_inbox_returns_empty(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """ingest_all returns empty lists when inbox is empty."""
         file_results, package_results = ingest_all(
-            mywork, ops, registry, extract=False,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert file_results == []
         assert package_results == []
@@ -428,7 +499,10 @@ class TestIngestAll:
 
 class TestIngestFolder:
     def test_routes_known_series(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Folder matching Cognitive Friday series routes correctly."""
         sub = mywork / "00_Inbox" / "Cognitive_Friday_S15_Materials"
@@ -437,7 +511,11 @@ class TestIngestFolder:
         (sub / "recording.mp4").write_bytes(b"recording")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "routed"
         assert result.match_method == "series"
@@ -447,7 +525,10 @@ class TestIngestFolder:
         assert not sub.exists()  # moved
 
     def test_preserves_structure(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Internal folder structure is preserved after routing."""
         sub = mywork / "00_Inbox" / "Cognitive_Friday_S20_Bundle"
@@ -457,7 +538,11 @@ class TestIngestFolder:
         (nested / "bonus.pdf").write_bytes(b"bonus")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "routed"
         # Check that the internal structure exists at destination
@@ -466,7 +551,10 @@ class TestIngestFolder:
         assert (dest_base / "extras" / "bonus.pdf").exists()
 
     def test_normalizes_name(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Spaces in folder name converted to underscores."""
         sub = mywork / "00_Inbox" / "My  Folder  Name"
@@ -474,14 +562,21 @@ class TestIngestFolder:
         (sub / "file.txt").write_bytes(b"content")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         # Destination should use underscores, no consecutive underscores
         assert "My_Folder_Name" in result.destination_path
         assert "__" not in result.destination_path
 
     def test_creates_package(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Package record created in ops.db with correct metadata."""
         sub = mywork / "00_Inbox" / "Lenzing_Workshop"
@@ -490,7 +585,11 @@ class TestIngestFolder:
         (sub / "notes.docx").write_bytes(b"notes")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         stats = ops.get_stats()
         assert stats["total_packages"] == 1
@@ -500,7 +599,10 @@ class TestIngestFolder:
         assert pkg["file_count"] == 2
 
     def test_registers_files(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """All files inside folder registered as assets linked to package."""
         sub = mywork / "00_Inbox" / "Lenzing_Materials"
@@ -518,7 +620,10 @@ class TestIngestFolder:
         assert all(a["package_id"] == 1 for a in assets)
 
     def test_quarantines_unknown(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Unknown folder name goes to _Unmatched."""
         sub = mywork / "00_Inbox" / "Random_Stuff"
@@ -526,13 +631,20 @@ class TestIngestFolder:
         (sub / "file.txt").write_bytes(b"content")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "quarantined"
         assert "00_Inbox/_Unmatched" in result.destination_path
 
     def test_dry_run(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Dry run reports without moving."""
         sub = mywork / "00_Inbox" / "Cognitive_Friday_S30"
@@ -540,27 +652,43 @@ class TestIngestFolder:
         (sub / "file.pptx").write_bytes(b"content")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False, dry_run=True,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
+            dry_run=True,
         )
         assert result.action == "routed"
         assert sub.exists()  # NOT moved
         assert ops.get_stats()["total_packages"] == 0
 
     def test_empty_folder_error(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Empty folder returns error result."""
         sub = mywork / "00_Inbox" / "Empty_Folder"
         sub.mkdir()
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "error"
         assert "Empty folder" in result.error
 
     def test_large_folder_warning(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry, caplog,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
+        caplog,
     ) -> None:
         """Folder with depth > 3 logs warning but still proceeds."""
         import logging
@@ -572,14 +700,21 @@ class TestIngestFolder:
 
         with caplog.at_level(logging.WARNING):
             result = ingest_folder(
-                sub, mywork, ops, registry, extract=False,
+                sub,
+                mywork,
+                ops,
+                registry,
+                extract=False,
             )
 
         assert result.action == "quarantined"  # unknown name
         assert "Large folder" in caplog.text
 
     def test_collision_adds_timestamp(
-        self, mywork: Path, ops: OpsDB, registry: ContentRegistry,
+        self,
+        mywork: Path,
+        ops: OpsDB,
+        registry: ContentRegistry,
     ) -> None:
         """Destination folder already exists → adds timestamp suffix."""
         # Pre-create destination
@@ -592,7 +727,11 @@ class TestIngestFolder:
         (sub / "new.txt").write_bytes(b"new")
 
         result = ingest_folder(
-            sub, mywork, ops, registry, extract=False,
+            sub,
+            mywork,
+            ops,
+            registry,
+            extract=False,
         )
         assert result.action == "quarantined"
         # Should have a timestamp suffix in the destination

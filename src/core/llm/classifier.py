@@ -25,13 +25,12 @@ Usage:
 import json
 import logging
 import re
-import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from src.core.prompts import PromptTemplate, PromptLogger
+from src.core.prompts import PromptLogger, PromptTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -45,33 +44,36 @@ PROVIDER_CHAIN = ["deepseek", "haiku", "sonnet", "regex"]
 # Pydantic result models
 # ---------------------------------------------------------------------------
 
+
 class ClassificationResult(BaseModel):
     """Structured result for a single filename."""
-    original:    str
-    client:      str | None = None
-    date:        str | None = None
-    ambig:       bool = False
-    desc:        str = "Technical_Presentation"
-    type:        Literal["PRES", "DOC", "REC"] = "PRES"
-    confidence:  Literal["high", "medium", "low"] = "medium"
+
+    original: str
+    client: str | None = None
+    date: str | None = None
+    ambig: bool = False
+    desc: str = "Technical_Presentation"
+    type: Literal["PRES", "DOC", "REC"] = "PRES"
+    confidence: Literal["high", "medium", "low"] = "medium"
     parse_method: str = "unknown"
 
 
 class PlanEntry(BaseModel):
     """One row in phase2_plan.json."""
-    original:      str
-    src:           str
-    client:        str                        # "_Unknown" if not identified
-    description:   str
-    date:          str                        # always populated (mtime fallback)
-    date_source:   Literal["filename", "mtime"]
-    ambig:         bool = False
-    type:          Literal["PRES", "DOC", "REC"] = "PRES"
+
+    original: str
+    src: str
+    client: str  # "_Unknown" if not identified
+    description: str
+    date: str  # always populated (mtime fallback)
+    date_source: Literal["filename", "mtime"]
+    ambig: bool = False
+    type: Literal["PRES", "DOC", "REC"] = "PRES"
     proposed_name: str
-    dst:           str
-    parse_method:  str
-    confidence:    Literal["high", "medium", "low"] = "medium"
-    status:        Literal["pending", "done", "skip", "exists", "cloud", "error"] = "pending"
+    dst: str
+    parse_method: str
+    confidence: Literal["high", "medium", "low"] = "medium"
+    status: Literal["pending", "done", "skip", "exists", "cloud", "error"] = "pending"
 
 
 # ---------------------------------------------------------------------------
@@ -79,26 +81,95 @@ class PlanEntry(BaseModel):
 # ---------------------------------------------------------------------------
 
 _MONTHS = {
-    "jan": "01", "feb": "02", "mar": "03", "apr": "04",
-    "may": "05", "jun": "06", "jul": "07", "aug": "08",
-    "sep": "09", "oct": "10", "nov": "11", "dec": "12",
+    "jan": "01",
+    "feb": "02",
+    "mar": "03",
+    "apr": "04",
+    "may": "05",
+    "jun": "06",
+    "jul": "07",
+    "aug": "08",
+    "sep": "09",
+    "oct": "10",
+    "nov": "11",
+    "dec": "12",
 }
 
 _NOISE = {
-    "blue", "yonder", "by", "saas", "technology", "technical", "platform",
-    "integration", "architecture", "presentation", "overview", "session",
-    "workshop", "rfp", "rfi", "demo", "discussion", "review", "summary",
-    "slides", "slide", "deck", "followup", "follow", "solution", "discovery",
-    "mike", "mikes", "local", "geller", "final", "copy", "updated", "template",
-    "draft", "for", "and", "the", "with", "from", "to", "of", "at",
-    "lp", "ep", "ms", "emea", "amer", "apac", "v1", "v2", "v3", "v4", "v5",
-    "wms", "tms", "oms", "dms", "scpo", "ibp", "f", "r",
+    "blue",
+    "yonder",
+    "by",
+    "saas",
+    "technology",
+    "technical",
+    "platform",
+    "integration",
+    "architecture",
+    "presentation",
+    "overview",
+    "session",
+    "workshop",
+    "rfp",
+    "rfi",
+    "demo",
+    "discussion",
+    "review",
+    "summary",
+    "slides",
+    "slide",
+    "deck",
+    "followup",
+    "follow",
+    "solution",
+    "discovery",
+    "mike",
+    "mikes",
+    "local",
+    "geller",
+    "final",
+    "copy",
+    "updated",
+    "template",
+    "draft",
+    "for",
+    "and",
+    "the",
+    "with",
+    "from",
+    "to",
+    "of",
+    "at",
+    "lp",
+    "ep",
+    "ms",
+    "emea",
+    "amer",
+    "apac",
+    "v1",
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "wms",
+    "tms",
+    "oms",
+    "dms",
+    "scpo",
+    "ibp",
+    "f",
+    "r",
 }
 
 _TYPE_MAP = {
-    ".pptx": "PRES", ".pptm": "PRES", ".ppt": "PRES",
-    ".pdf":  "DOC",  ".docx": "DOC",  ".doc": "DOC",
-    ".mp4":  "REC",  ".mkv":  "REC",  ".m4a": "REC",
+    ".pptx": "PRES",
+    ".pptm": "PRES",
+    ".ppt": "PRES",
+    ".pdf": "DOC",
+    ".docx": "DOC",
+    ".doc": "DOC",
+    ".mp4": "REC",
+    ".mkv": "REC",
+    ".m4a": "REC",
 }
 
 
@@ -114,32 +185,32 @@ def _regex_date(stem: str):
     if m:
         y, mo, d = m.groups()
         if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d}", False, s[:m.start()] + " " + s[m.end():]
+            return f"{y}-{mo}-{d}", False, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"(\d{4})(\d{2})(\d{2})", s)
     if m:
         y, mo, d = m.groups()
         if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d}", False, s[:m.start()] + " " + s[m.end():]
+            return f"{y}-{mo}-{d}", False, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"(?<!\d)(\d{2})[_\-.](\\d{2})[_\-.](\\d{2})(?!\d)", s)
     if m:
         a, b, c = m.groups()
         if int(a) > 31:
-            return f"20{a}-{b}-{c}", False, s[:m.start()] + " " + s[m.end():]
+            return f"20{a}-{b}-{c}", False, s[: m.start()] + " " + s[m.end() :]
         if int(c) > 31:
-            return f"20{c}-{b}-{a}", True, s[:m.start()] + " " + s[m.end():]
-        return f"20{a}-{b}-{c}", True, s[:m.start()] + " " + s[m.end():]
+            return f"20{c}-{b}-{a}", True, s[: m.start()] + " " + s[m.end() :]
+        return f"20{a}-{b}-{c}", True, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"(\d{2})[.\-](\d{2})[.\-](\d{4})", s)
     if m:
         a, b, y = m.groups()
         if 2019 <= int(y) <= 2026:
             if int(a) > 12:
-                return f"{y}-{b}-{a}", False, s[:m.start()] + " " + s[m.end():]
+                return f"{y}-{b}-{a}", False, s[: m.start()] + " " + s[m.end() :]
             if int(b) > 12:
-                return f"{y}-{a}-{b}", False, s[:m.start()] + " " + s[m.end():]
-            return f"{y}-{b}-{a}", True, s[:m.start()] + " " + s[m.end():]
+                return f"{y}-{a}-{b}", False, s[: m.start()] + " " + s[m.end() :]
+            return f"{y}-{b}-{a}", True, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"(\d{1,2})(" + mon + r")(\d{2,4})", s, re.IGNORECASE)
     if m:
@@ -147,18 +218,18 @@ def _regex_date(stem: str):
         mo = _MONTHS[mn]
         y = f"20{yr}" if len(yr) == 2 else yr
         if 2019 <= int(y) <= 2026 and 1 <= int(d) <= 31:
-            return f"{y}-{mo}-{d.zfill(2)}", False, s[:m.start()] + " " + s[m.end():]
+            return f"{y}-{mo}-{d.zfill(2)}", False, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"\b(" + mon + r")\w*\s+(?:\d{1,2}\w*\s+)?(\d{4})\b", s, re.IGNORECASE)
     if m:
         mo = _MONTHS[m.group(1).lower()[:3]]
-        return f"{m.group(2)}-{mo}-01", False, s[:m.start()] + " " + s[m.end():]
+        return f"{m.group(2)}-{mo}-01", False, s[: m.start()] + " " + s[m.end() :]
 
     m = re.search(r"\b(\d{4})-(\d{2})\b", s)
     if m:
         y, mo = m.groups()
         if 2019 <= int(y) <= 2026 and 1 <= int(mo) <= 12:
-            return f"{y}-{mo}-01", False, s[:m.start()] + " " + s[m.end():]
+            return f"{y}-{mo}-01", False, s[: m.start()] + " " + s[m.end() :]
 
     return None, False, s
 
@@ -166,8 +237,9 @@ def _regex_date(stem: str):
 def _regex_client(stem: str) -> str | None:
     s = re.sub(r"^local[\s_]+", "", stem.strip(), flags=re.IGNORECASE)
 
-    m = re.search(r"mike'?s\s+slides?\s+for\s+([A-Za-z][A-Za-z0-9&\s]+?)(?:\s*\d|\s*$)",
-                  s, re.IGNORECASE)
+    m = re.search(
+        r"mike'?s\s+slides?\s+for\s+([A-Za-z][A-Za-z0-9&\s]+?)(?:\s*\d|\s*$)", s, re.IGNORECASE
+    )
     if m:
         return _to_pascal(m.group(1).strip())
 
@@ -175,8 +247,9 @@ def _regex_client(stem: str) -> str | None:
     if m:
         return _to_pascal(m.group(1).strip())
 
-    m = re.search(r"\bby\s+(?:saas|platform|wms|tms|presentation)\s+([A-Za-z]\w+)",
-                  s, re.IGNORECASE)
+    m = re.search(
+        r"\bby\s+(?:saas|platform|wms|tms|presentation)\s+([A-Za-z]\w+)", s, re.IGNORECASE
+    )
     if m:
         return m.group(1).capitalize()
 
@@ -189,16 +262,26 @@ def _regex_client(stem: str) -> str | None:
 
 def _regex_desc(stem: str) -> str:
     s = stem.lower()
-    if re.search(r"\brfp\b", s):          return "RFP_Response"
-    if re.search(r"\brfi\b|\brft\b", s):  return "RFI_Response"
-    if re.search(r"\bworkshop\b", s):     return "Workshop"
-    if re.search(r"\bdiscovery\b", s):    return "Discovery_Session"
-    if re.search(r"\bintegration\b", s):  return "Integration_Workshop"
-    if re.search(r"\barchitecture\b", s): return "Architecture_Review"
-    if re.search(r"\bdeep.?dive\b", s):   return "Deep_Dive"
-    if re.search(r"\bfollow.?up\b", s):   return "Follow_Up"
-    if re.search(r"\bdemo\b", s):         return "Platform_Demo"
-    if re.search(r"\btraining\b", s):     return "Training"
+    if re.search(r"\brfp\b", s):
+        return "RFP_Response"
+    if re.search(r"\brfi\b|\brft\b", s):
+        return "RFI_Response"
+    if re.search(r"\bworkshop\b", s):
+        return "Workshop"
+    if re.search(r"\bdiscovery\b", s):
+        return "Discovery_Session"
+    if re.search(r"\bintegration\b", s):
+        return "Integration_Workshop"
+    if re.search(r"\barchitecture\b", s):
+        return "Architecture_Review"
+    if re.search(r"\bdeep.?dive\b", s):
+        return "Deep_Dive"
+    if re.search(r"\bfollow.?up\b", s):
+        return "Follow_Up"
+    if re.search(r"\bdemo\b", s):
+        return "Platform_Demo"
+    if re.search(r"\btraining\b", s):
+        return "Training"
     return "Technical_Presentation"
 
 
@@ -221,6 +304,7 @@ def regex_classify(name: str) -> ClassificationResult:
 # ---------------------------------------------------------------------------
 # AIClassifier
 # ---------------------------------------------------------------------------
+
 
 class AIClassifier:
     """
@@ -249,7 +333,7 @@ class AIClassifier:
     ):
         self.batch_size = batch_size
         self.prompt = PromptTemplate.load(PROMPT_NAME)
-        self.plog   = PromptLogger() if log_path is None else PromptLogger(log_path)
+        self.plog = PromptLogger() if log_path is None else PromptLogger(log_path)
 
         self.provider = self._resolve_provider(provider)
         self._llm = None  # lazy-loaded
@@ -275,9 +359,7 @@ class AIClassifier:
                 return "regex"
             if self._can_use_provider(provider):
                 if provider != requested:
-                    logger.warning(
-                        "%s unavailable, falling back to %s", requested, provider
-                    )
+                    logger.warning("%s unavailable, falling back to %s", requested, provider)
                 return provider
 
         return "regex"
@@ -287,14 +369,17 @@ class AIClassifier:
         try:
             if provider == "deepseek":
                 from src.core.llm.deepseek import get_client as _gc
+
                 _gc()
                 return True
             if provider == "haiku":
                 from src.core.llm.haiku import get_client as _gc
+
                 _gc()
                 return True
             if provider == "sonnet":
                 from src.core.llm.sonnet import get_client as _gc
+
                 _gc()
                 return True
             return False
@@ -309,12 +394,15 @@ class AIClassifier:
         if self._llm is None:
             if self.provider == "deepseek":
                 from src.core.llm.deepseek import get_client
+
                 self._llm = get_client()
             elif self.provider == "haiku":
                 from src.core.llm.haiku import get_client
+
                 self._llm = get_client()
             else:
                 from src.core.llm.sonnet import get_client
+
                 self._llm = get_client()
         return self._llm
 
@@ -338,8 +426,9 @@ class AIClassifier:
         if self.provider == "regex":
             return [regex_classify(n) for n in filenames]
 
-        batches = [filenames[i:i+self.batch_size]
-                   for i in range(0, len(filenames), self.batch_size)]
+        batches = [
+            filenames[i : i + self.batch_size] for i in range(0, len(filenames), self.batch_size)
+        ]
         results: list[ClassificationResult] = []
 
         for batch_num, batch in enumerate(batches, 1):
@@ -352,11 +441,11 @@ class AIClassifier:
     def _classify_batch(
         self, filenames: list[str], batch_num: int, total_batches: int
     ) -> list[ClassificationResult]:
-        names_block = "\n".join(f"  {i+1:3}. {n}" for i, n in enumerate(filenames))
+        names_block = "\n".join(f"  {i + 1:3}. {n}" for i, n in enumerate(filenames))
         rendered = self.prompt.render(n=len(filenames), filenames=names_block)
 
         raw_output = ""
-        error_msg  = None
+        error_msg = None
 
         try:
             llm = self._get_llm()
@@ -369,10 +458,14 @@ class AIClassifier:
             parsed_list = self._parse_json_response(raw_output, filenames)
 
         except Exception as e:
-            error_msg  = f"{type(e).__name__}: {e}"
+            error_msg = f"{type(e).__name__}: {e}"
             raw_output = error_msg
-            logger.warning("Batch %d/%d failed (%s), falling back to regex",
-                           batch_num, total_batches, error_msg)
+            logger.warning(
+                "Batch %d/%d failed (%s), falling back to regex",
+                batch_num,
+                total_batches,
+                error_msg,
+            )
             parsed_list = [regex_classify(n) for n in filenames]
 
         self.plog.log(
@@ -389,9 +482,7 @@ class AIClassifier:
 
         return parsed_list
 
-    def _parse_json_response(
-        self, raw: str, filenames: list[str]
-    ) -> list[ClassificationResult]:
+    def _parse_json_response(self, raw: str, filenames: list[str]) -> list[ClassificationResult]:
         """Parse JSON response; fall back to regex for entries that are malformed."""
         text = raw.strip()
         if text.startswith("```"):
@@ -413,14 +504,16 @@ class AIClassifier:
         results = []
         for i, name in enumerate(filenames):
             meta = data[i] if i < len(data) and isinstance(data[i], dict) else {}
-            results.append(ClassificationResult(
-                original=name,
-                client=meta.get("client") or None,
-                date=meta.get("date") or None,
-                ambig=bool(meta.get("ambig", False)),
-                desc=meta.get("desc") or "Technical_Presentation",
-                type=meta.get("type") or _TYPE_MAP.get(Path(name).suffix.lower(), "PRES"),
-                confidence=meta.get("confidence") or "medium",
-                parse_method=self.provider,
-            ))
+            results.append(
+                ClassificationResult(
+                    original=name,
+                    client=meta.get("client") or None,
+                    date=meta.get("date") or None,
+                    ambig=bool(meta.get("ambig", False)),
+                    desc=meta.get("desc") or "Technical_Presentation",
+                    type=meta.get("type") or _TYPE_MAP.get(Path(name).suffix.lower(), "PRES"),
+                    confidence=meta.get("confidence") or "medium",
+                    parse_method=self.provider,
+                )
+            )
         return results

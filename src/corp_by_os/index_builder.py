@@ -12,7 +12,7 @@ import json
 import logging
 import sqlite3
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -110,7 +110,8 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
     INSERT INTO notes_fts(notes_fts, rowid, title, topics, products, domains, client, project_id)
-    VALUES ('delete', old.id, old.title, old.topics, old.products, old.domains, old.client, old.project_id);
+    VALUES ('delete', old.id, old.title, old.topics, old.products,
+            old.domains, old.client, old.project_id);
 END;
 
 -- Triggers to keep FTS in sync with facts table
@@ -194,7 +195,8 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
         now = datetime.now().isoformat(timespec="seconds")
         duration = time.time() - start
         conn.execute(
-            "INSERT OR REPLACE INTO meta VALUES ('last_rebuild', ?)", (now,),
+            "INSERT OR REPLACE INTO meta VALUES ('last_rebuild', ?)",
+            (now,),
         )
         conn.execute(
             "INSERT OR REPLACE INTO meta VALUES ('total_projects', ?)",
@@ -217,7 +219,11 @@ def rebuild_index(db_path: Path | None = None) -> IndexStats:
         path = db_path or get_index_path()
         logger.info(
             "Index rebuilt: %d projects, %d facts, %d notes in %.1fs -> %s",
-            projects_count, facts_count, notes_count, duration, path,
+            projects_count,
+            facts_count,
+            notes_count,
+            duration,
+            path,
         )
 
         return IndexStats(
@@ -315,6 +321,7 @@ def _collect_project_dirs(cfg) -> dict[str, dict]:
 
     # Scan vault
     from corp_by_os.models import VaultZone
+
     vault_projects = cfg.vault_path / VaultZone.PROJECTS.value
     if vault_projects.exists():
         for folder in sorted(vault_projects.iterdir()):

@@ -58,7 +58,13 @@ def sample_workflows() -> dict[str, Workflow]:
         "my_tasks": Workflow(
             id="my_tasks",
             description="Show current tasks",
-            trigger_phrases=["moje taski", "my tasks", "co mam zrobic", "what to do", "lista zadan"],
+            trigger_phrases=[
+                "moje taski",
+                "my tasks",
+                "co mam zrobic",
+                "what to do",
+                "lista zadan",
+            ],
             parameters={
                 "status": WorkflowParam(type="string", required=False, default="todo"),
             },
@@ -87,7 +93,13 @@ def sample_workflows() -> dict[str, Workflow]:
         "project_brief": Workflow(
             id="project_brief",
             description="Generate project brief",
-            trigger_phrases=["brief", "brief na", "prepare brief", "podsumowanie projektu", "co wiemy o"],
+            trigger_phrases=[
+                "brief",
+                "brief na",
+                "prepare brief",
+                "podsumowanie projektu",
+                "co wiemy o",
+            ],
             parameters={
                 "project": WorkflowParam(type="string", required=True),
             },

@@ -6,11 +6,11 @@ Dataclasses (not Pydantic) — lightweight, typed, frozen where appropriate.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class VaultZone(str, Enum):
+class VaultZone(StrEnum):
     """Obsidian vault top-level folders."""
 
     DASHBOARDS = "00_dashboards"
@@ -21,7 +21,7 @@ class VaultZone(str, Enum):
     TEMPLATES = "05_templates"
 
 
-class Mutability(str, Enum):
+class Mutability(StrEnum):
     """Folder mutability rules per INTEGRATION_SPEC."""
 
     IMMUTABLE = "immutable"
@@ -182,7 +182,7 @@ class WorkflowResult:
 # --- Task models ---
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task lifecycle states."""
 
     TODO = "todo"
@@ -191,7 +191,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     """Task priority levels."""
 
     HIGH = "high"
@@ -241,6 +241,7 @@ class IndexStats:
 
     projects_indexed: int
     facts_indexed: int
+    notes_indexed: int
     rebuild_duration: float
     index_path: str
 

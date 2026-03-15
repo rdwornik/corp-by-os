@@ -29,58 +29,113 @@ def populated_index(app_config, tmp_vault: Path, tmp_projects: Path, tmp_path: P
     knowledge = lenzing / "_knowledge"
     knowledge.mkdir(parents=True, exist_ok=True)
 
-    (knowledge / "project-info.yaml").write_text(yaml.dump({
-        "project": "Lenzing_Planning",
-        "status": "active",
-        "products": ["Planning", "Network"],
-        "topics": ["Demand Planning", "SAP Integration", "Security"],
-        "people": ["Jan Kowalski"],
-    }), encoding="utf-8")
+    (knowledge / "project-info.yaml").write_text(
+        yaml.dump(
+            {
+                "project": "Lenzing_Planning",
+                "status": "active",
+                "products": ["Planning", "Network"],
+                "topics": ["Demand Planning", "SAP Integration", "Security"],
+                "people": ["Jan Kowalski"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    (knowledge / "facts.yaml").write_text(yaml.dump({
-        "project": "Lenzing_Planning",
-        "total_facts": 5,
-        "facts": [
-            {"fact": "SAP integration requires ECC 6.0 or S/4HANA.", "source_title": "Tech Review", "topics": ["SAP Integration"]},
-            {"fact": "Demand planning uses weekly buckets for 18 months.", "source_title": "Requirements", "topics": ["Demand Planning"]},
-            {"fact": "Security review passed SOC2 Type II.", "source_title": "Security Audit", "topics": ["Security"]},
-            {"fact": "Network optimization reduced costs by 12%.", "source_title": "Results", "topics": ["Network"]},
-            {"fact": "SAP middleware handles 500K transactions daily.", "source_title": "Architecture", "topics": ["SAP Integration"]},
-        ],
-    }, default_flow_style=False), encoding="utf-8")
+    (knowledge / "facts.yaml").write_text(
+        yaml.dump(
+            {
+                "project": "Lenzing_Planning",
+                "total_facts": 5,
+                "facts": [
+                    {
+                        "fact": "SAP integration requires ECC 6.0 or S/4HANA.",
+                        "source_title": "Tech Review",
+                        "topics": ["SAP Integration"],
+                    },
+                    {
+                        "fact": "Demand planning uses weekly buckets for 18 months.",
+                        "source_title": "Requirements",
+                        "topics": ["Demand Planning"],
+                    },
+                    {
+                        "fact": "Security review passed SOC2 Type II.",
+                        "source_title": "Security Audit",
+                        "topics": ["Security"],
+                    },
+                    {
+                        "fact": "Network optimization reduced costs by 12%.",
+                        "source_title": "Results",
+                        "topics": ["Network"],
+                    },
+                    {
+                        "fact": "SAP middleware handles 500K transactions daily.",
+                        "source_title": "Architecture",
+                        "topics": ["SAP Integration"],
+                    },
+                ],
+            },
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
 
     # Honda: has different products
     honda = tmp_projects / "Honda_Planning"
     honda_knowledge = honda / "_knowledge"
     honda_knowledge.mkdir(parents=True, exist_ok=True)
 
-    (honda_knowledge / "project-info.yaml").write_text(yaml.dump({
-        "project": "Honda_Planning",
-        "status": "active",
-        "products": ["Planning", "WMS"],
-        "topics": ["Demand Planning", "WMS Migration"],
-    }), encoding="utf-8")
+    (honda_knowledge / "project-info.yaml").write_text(
+        yaml.dump(
+            {
+                "project": "Honda_Planning",
+                "status": "active",
+                "products": ["Planning", "WMS"],
+                "topics": ["Demand Planning", "WMS Migration"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    (honda_knowledge / "facts.yaml").write_text(yaml.dump({
-        "project": "Honda_Planning",
-        "total_facts": 2,
-        "facts": [
-            {"fact": "WMS migration from legacy SAP EWM.", "source_title": "Migration Plan", "topics": ["WMS Migration", "SAP Integration"]},
-            {"fact": "Demand planning integrates with SAP APO.", "source_title": "Integration Spec", "topics": ["Demand Planning"]},
-        ],
-    }, default_flow_style=False), encoding="utf-8")
+    (honda_knowledge / "facts.yaml").write_text(
+        yaml.dump(
+            {
+                "project": "Honda_Planning",
+                "total_facts": 2,
+                "facts": [
+                    {
+                        "fact": "WMS migration from legacy SAP EWM.",
+                        "source_title": "Migration Plan",
+                        "topics": ["WMS Migration", "SAP Integration"],
+                    },
+                    {
+                        "fact": "Demand planning integrates with SAP APO.",
+                        "source_title": "Integration Spec",
+                        "topics": ["Demand Planning"],
+                    },
+                ],
+            },
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
 
     # Zabka: CatMan product, different domain
     zabka = tmp_projects / "Zabka_CatMan"
     zabka_knowledge = zabka / "_knowledge"
     zabka_knowledge.mkdir(parents=True, exist_ok=True)
 
-    (zabka_knowledge / "project-info.yaml").write_text(yaml.dump({
-        "project": "Zabka_CatMan",
-        "status": "won",
-        "products": ["CatMan"],
-        "topics": ["Category Management", "Retail"],
-    }), encoding="utf-8")
+    (zabka_knowledge / "project-info.yaml").write_text(
+        yaml.dump(
+            {
+                "project": "Zabka_CatMan",
+                "status": "won",
+                "products": ["CatMan"],
+                "topics": ["Category Management", "Retail"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     rebuild_index(db_path)
     return db_path

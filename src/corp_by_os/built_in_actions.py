@@ -27,9 +27,11 @@ _ACTIONS: dict[str, Callable[[dict[str, str]], StepResult]] = {}
 
 def register_action(name: str) -> Callable:
     """Decorator to register a built-in action."""
+
     def decorator(fn: Callable[[dict[str, str]], StepResult]) -> Callable:
         _ACTIONS[name] = fn
         return fn
+
     return decorator
 
 
@@ -50,8 +52,10 @@ def create_vault_skeleton(params: dict[str, str]) -> StepResult:
 
     if not client:
         return StepResult(
-            step_index=0, description="Create vault skeleton",
-            success=False, error="Missing 'client' parameter",
+            step_index=0,
+            description="Create vault skeleton",
+            success=False,
+            error="Missing 'client' parameter",
         )
 
     # Build project_id matching com new's {client}_{product} pattern, then lowercase
@@ -92,8 +96,10 @@ def create_vault_skeleton(params: dict[str, str]) -> StepResult:
         )
 
     return StepResult(
-        step_index=0, description="Create vault skeleton",
-        success=True, output=f"Created vault skeleton at {project_dir}",
+        step_index=0,
+        description="Create vault skeleton",
+        success=True,
+        output=f"Created vault skeleton at {project_dir}",
     )
 
 
@@ -109,14 +115,16 @@ def validate_project(params: dict[str, str]) -> StepResult:
 
     if report.is_valid:
         return StepResult(
-            step_index=0, description="Validate project",
+            step_index=0,
+            description="Validate project",
             success=True,
             output=f"Valid: {report.notes_checked} notes checked, {report.notes_valid} valid",
         )
     else:
         issues_str = "\n".join(f"  {i.level}: {i.message}" for i in report.issues)
         return StepResult(
-            step_index=0, description="Validate project",
+            step_index=0,
+            description="Validate project",
             success=False,
             output=f"{report.notes_checked} notes checked",
             error=f"Validation issues:\n{issues_str}",
@@ -134,8 +142,10 @@ def copy_to_vault_action(params: dict[str, str]) -> StepResult:
 
     if not project_path:
         return StepResult(
-            step_index=0, description="Copy to vault",
-            success=False, error=f"Could not resolve project path for '{project}'",
+            step_index=0,
+            description="Copy to vault",
+            success=False,
+            error=f"Could not resolve project path for '{project}'",
         )
 
     copied_total = 0
@@ -153,8 +163,10 @@ def copy_to_vault_action(params: dict[str, str]) -> StepResult:
         copied_total += len(copied)
 
     return StepResult(
-        step_index=0, description="Copy to vault",
-        success=True, output=f"Copied {copied_total} files to vault",
+        step_index=0,
+        description="Copy to vault",
+        success=True,
+        output=f"Copied {copied_total} files to vault",
     )
 
 
@@ -163,7 +175,6 @@ def scan_attention(params: dict[str, str]) -> StepResult:
     """Scan all projects for stale/missing/incomplete items."""
     from corp_by_os.vault_io import list_projects, read_project_info
 
-    cfg = get_config()
     projects = list_projects()
     issues: list[dict[str, str]] = []
 
@@ -173,11 +184,13 @@ def scan_attention(params: dict[str, str]) -> StepResult:
 
         # Check: no vault presence
         if not proj.has_vault and proj.has_onedrive:
-            issues.append({
-                "project": display_name,
-                "severity": "MEDIUM",
-                "issue": "No vault presence (exists in OneDrive only)",
-            })
+            issues.append(
+                {
+                    "project": display_name,
+                    "severity": "MEDIUM",
+                    "issue": "No vault presence (exists in OneDrive only)",
+                }
+            )
             continue
 
         # Read project info for deeper checks
@@ -185,56 +198,67 @@ def scan_attention(params: dict[str, str]) -> StepResult:
 
         if info is None:
             if proj.has_vault:
-                issues.append({
-                    "project": display_name,
-                    "severity": "HIGH",
-                    "issue": "Missing project-info.yaml",
-                })
+                issues.append(
+                    {
+                        "project": display_name,
+                        "severity": "HIGH",
+                        "issue": "Missing project-info.yaml",
+                    }
+                )
             continue
 
         # Check: no extraction
         if info.facts_count == 0:
-            issues.append({
-                "project": display_name,
-                "severity": "HIGH",
-                "issue": "No extraction (facts_count = 0)",
-            })
+            issues.append(
+                {
+                    "project": display_name,
+                    "severity": "HIGH",
+                    "issue": "No extraction (facts_count = 0)",
+                }
+            )
 
         # Check: stale extraction
         if info.last_extracted:
             try:
                 last = datetime.strptime(info.last_extracted, "%Y-%m-%d").date()
                 if (date.today() - last) > timedelta(days=30):
-                    issues.append({
-                        "project": display_name,
-                        "severity": "MEDIUM",
-                        "issue": f"Stale extraction (last: {info.last_extracted})",
-                    })
+                    issues.append(
+                        {
+                            "project": display_name,
+                            "severity": "MEDIUM",
+                            "issue": f"Stale extraction (last: {info.last_extracted})",
+                        }
+                    )
             except ValueError:
                 pass
 
         # Check: missing products
         if not info.products:
-            issues.append({
-                "project": display_name,
-                "severity": "LOW",
-                "issue": "Missing products list",
-            })
+            issues.append(
+                {
+                    "project": display_name,
+                    "severity": "LOW",
+                    "issue": "Missing products list",
+                }
+            )
 
         # Check: missing contacts
         if not info.people:
-            issues.append({
-                "project": display_name,
-                "severity": "LOW",
-                "issue": "Missing contacts/people list",
-            })
+            issues.append(
+                {
+                    "project": display_name,
+                    "severity": "LOW",
+                    "issue": "Missing contacts/people list",
+                }
+            )
 
     # Store issues in params for dashboard generation
     params["_attention_issues"] = _serialize_issues(issues)
     params["_attention_project_count"] = str(len(projects))
 
     return StepResult(
-        step_index=0, description="Scan attention",
+        step_index=0,
+        description="Scan attention",
         success=True,
         output=f"Scanned {len(projects)} projects, found {len(issues)} issues",
     )
@@ -252,8 +276,8 @@ def generate_attention_dashboard(params: dict[str, str]) -> StepResult:
         "---",
         "title: Attention Dashboard",
         "document_type: dashboard",
-        f"date: \"{date.today().isoformat()}\"",
-        f"generated: \"{date.today().isoformat()}\"",
+        f'date: "{date.today().isoformat()}"',
+        f'generated: "{date.today().isoformat()}"',
         "source_tool: corp-by-os",
         "tags: [dashboard, auto-generated]",
         "---",
@@ -284,8 +308,10 @@ def generate_attention_dashboard(params: dict[str, str]) -> StepResult:
     dashboard_path.write_text("\n".join(lines), encoding="utf-8")
 
     return StepResult(
-        step_index=0, description="Generate attention dashboard",
-        success=True, output=f"Wrote {dashboard_path} ({len(issues)} issues)",
+        step_index=0,
+        description="Generate attention dashboard",
+        success=True,
+        output=f"Wrote {dashboard_path} ({len(issues)} issues)",
     )
 
 
@@ -297,16 +323,20 @@ def scan_inbox(params: dict[str, str]) -> StepResult:
 
     if not inbox_path.exists():
         return StepResult(
-            step_index=0, description="Scan inbox",
-            success=True, output="Inbox directory not found",
+            step_index=0,
+            description="Scan inbox",
+            success=True,
+            output="Inbox directory not found",
         )
 
     files = [f for f in inbox_path.rglob("*") if f.is_file()]
 
     if not files:
         return StepResult(
-            step_index=0, description="Scan inbox",
-            success=True, output="Inbox is empty",
+            step_index=0,
+            description="Scan inbox",
+            success=True,
+            output="Inbox is empty",
         )
 
     classified: dict[str, list[str]] = {}
@@ -323,8 +353,10 @@ def scan_inbox(params: dict[str, str]) -> StepResult:
             output_lines.append(f"    ... and {len(names) - 5} more")
 
     return StepResult(
-        step_index=0, description="Scan inbox",
-        success=True, output="\n".join(output_lines),
+        step_index=0,
+        description="Scan inbox",
+        success=True,
+        output="\n".join(output_lines),
     )
 
 
@@ -340,8 +372,10 @@ def generate_project_brief(params: dict[str, str]) -> StepResult:
     info = read_project_info(project_id)
     if info is None:
         return StepResult(
-            step_index=0, description="Generate project brief",
-            success=False, error=f"No project-info.yaml found for '{project_id}'",
+            step_index=0,
+            description="Generate project brief",
+            success=False,
+            error=f"No project-info.yaml found for '{project_id}'",
         )
 
     # Try to read facts.yaml
@@ -360,9 +394,9 @@ def generate_project_brief(params: dict[str, str]) -> StepResult:
     # Build brief
     lines = [
         "---",
-        f"title: \"{info.client} — Project Brief\"",
+        f'title: "{info.client} — Project Brief"',
         "document_type: brief",
-        f"generated: \"{date.today().isoformat()}\"",
+        f'generated: "{date.today().isoformat()}"',
         "tags: [brief, auto-generated]",
         "---",
         "",
@@ -404,8 +438,10 @@ def generate_project_brief(params: dict[str, str]) -> StepResult:
     brief_path.write_text(brief_md, encoding="utf-8")
 
     return StepResult(
-        step_index=0, description="Generate project brief",
-        success=True, output=f"Brief written to {brief_path}",
+        step_index=0,
+        description="Generate project brief",
+        success=True,
+        output=f"Brief written to {brief_path}",
     )
 
 
@@ -419,15 +455,19 @@ def archive_project(params: dict[str, str]) -> StepResult:
 
     if not project:
         return StepResult(
-            step_index=0, description="Archive project",
-            success=False, error="Missing 'project' parameter",
+            step_index=0,
+            description="Archive project",
+            success=False,
+            error="Missing 'project' parameter",
         )
 
     project_path = _resolve_project_path(project, params)
     if not project_path or not project_path.exists():
         return StepResult(
-            step_index=0, description="Archive project",
-            success=False, error=f"Project folder not found: {project}",
+            step_index=0,
+            description="Archive project",
+            success=False,
+            error=f"Project folder not found: {project}",
         )
 
     # Move to archive
@@ -438,8 +478,10 @@ def archive_project(params: dict[str, str]) -> StepResult:
 
     if dest.exists():
         return StepResult(
-            step_index=0, description="Archive project",
-            success=False, error=f"Archive destination already exists: {dest}",
+            step_index=0,
+            description="Archive project",
+            success=False,
+            error=f"Archive destination already exists: {dest}",
         )
 
     shutil.move(str(project_path), str(dest))
@@ -465,8 +507,10 @@ def archive_project(params: dict[str, str]) -> StepResult:
             logger.warning("Failed to update project-info.yaml: %s", e)
 
     return StepResult(
-        step_index=0, description="Archive project",
-        success=True, output=f"Archived {project_path.name} to {dest}",
+        step_index=0,
+        description="Archive project",
+        success=True,
+        output=f"Archived {project_path.name} to {dest}",
     )
 
 
@@ -482,8 +526,10 @@ def update_archive_metadata(params: dict[str, str]) -> StepResult:
 
     if not info_file.exists():
         return StepResult(
-            step_index=0, description="Update archive metadata",
-            success=True, output="No vault metadata to update",
+            step_index=0,
+            description="Update archive metadata",
+            success=True,
+            output="No vault metadata to update",
         )
 
     try:
@@ -496,13 +542,17 @@ def update_archive_metadata(params: dict[str, str]) -> StepResult:
         )
     except Exception as e:
         return StepResult(
-            step_index=0, description="Update archive metadata",
-            success=False, error=str(e),
+            step_index=0,
+            description="Update archive metadata",
+            success=False,
+            error=str(e),
         )
 
     return StepResult(
-        step_index=0, description="Update archive metadata",
-        success=True, output=f"Updated metadata for {project_id}",
+        step_index=0,
+        description="Update archive metadata",
+        success=True,
+        output=f"Updated metadata for {project_id}",
     )
 
 
@@ -514,8 +564,10 @@ def add_task_action(params: dict[str, str]) -> StepResult:
     title = params.get("title", "")
     if not title:
         return StepResult(
-            step_index=0, description="Add task",
-            success=False, error="Missing 'title' parameter",
+            step_index=0,
+            description="Add task",
+            success=False,
+            error="Missing 'title' parameter",
         )
 
     path = add_task(
@@ -526,8 +578,10 @@ def add_task_action(params: dict[str, str]) -> StepResult:
     )
 
     return StepResult(
-        step_index=0, description="Add task",
-        success=True, output=f"Created task: {path.name}",
+        step_index=0,
+        description="Add task",
+        success=True,
+        output=f"Created task: {path.name}",
     )
 
 
@@ -543,8 +597,10 @@ def list_tasks_action(params: dict[str, str]) -> StepResult:
 
     if not tasks:
         return StepResult(
-            step_index=0, description="List tasks",
-            success=True, output="No tasks found",
+            step_index=0,
+            description="List tasks",
+            success=True,
+            output="No tasks found",
         )
 
     lines = [f"Found {len(tasks)} tasks:"]
@@ -554,8 +610,10 @@ def list_tasks_action(params: dict[str, str]) -> StepResult:
         lines.append(f"  [{t.priority.value.upper()}] {t.title}{project_str}{deadline_str}")
 
     return StepResult(
-        step_index=0, description="List tasks",
-        success=True, output="\n".join(lines),
+        step_index=0,
+        description="List tasks",
+        success=True,
+        output="\n".join(lines),
     )
 
 
@@ -570,8 +628,10 @@ def select_template_for_deck(params: dict[str, str]) -> StepResult:
     templates = load_registry()
     if not templates:
         return StepResult(
-            step_index=0, description="Select template",
-            success=False, error="No templates in registry. Run `corp template scan` first.",
+            step_index=0,
+            description="Select template",
+            success=False,
+            error="No templates in registry. Run `corp template scan` first.",
         )
 
     if template_id:
@@ -581,7 +641,8 @@ def select_template_for_deck(params: dict[str, str]) -> StepResult:
             selected = match[0]
         else:
             return StepResult(
-                step_index=0, description="Select template",
+                step_index=0,
+                description="Select template",
                 success=False,
                 error=f"Template '{template_id}' not found. Run `corp template list`.",
             )
@@ -589,8 +650,10 @@ def select_template_for_deck(params: dict[str, str]) -> StepResult:
         selected = select_template(topic, templates)
         if selected is None:
             return StepResult(
-                step_index=0, description="Select template",
-                success=False, error="No matching template found.",
+                step_index=0,
+                description="Select template",
+                success=False,
+                error="No matching template found.",
             )
 
     # Pass selection to next step via params
@@ -600,7 +663,8 @@ def select_template_for_deck(params: dict[str, str]) -> StepResult:
     params["_selected_template_name"] = selected.name
 
     return StepResult(
-        step_index=0, description="Select template",
+        step_index=0,
+        description="Select template",
         success=True,
         output=f"Selected: {selected.name} ({selected.id})",
     )
@@ -614,8 +678,10 @@ def copy_deck_to_project(params: dict[str, str]) -> StepResult:
     template_id = params.get("_selected_template_id", "")
     if not template_id:
         return StepResult(
-            step_index=0, description="Copy deck",
-            success=False, error="No template selected (missing _selected_template_id).",
+            step_index=0,
+            description="Copy deck",
+            success=False,
+            error="No template selected (missing _selected_template_id).",
         )
 
     project = params.get("project", "")
@@ -629,8 +695,10 @@ def copy_deck_to_project(params: dict[str, str]) -> StepResult:
     match = [t for t in templates if t.id == template_id]
     if not match:
         return StepResult(
-            step_index=0, description="Copy deck",
-            success=False, error=f"Template '{template_id}' not in registry.",
+            step_index=0,
+            description="Copy deck",
+            success=False,
+            error=f"Template '{template_id}' not in registry.",
         )
     template = match[0]
 
@@ -650,18 +718,24 @@ def copy_deck_to_project(params: dict[str, str]) -> StepResult:
     try:
         result_path = copy_template(template, dest_dir, new_name)
         return StepResult(
-            step_index=0, description="Copy deck",
-            success=True, output=f"Copied to {result_path}",
+            step_index=0,
+            description="Copy deck",
+            success=True,
+            output=f"Copied to {result_path}",
         )
     except FileNotFoundError as e:
         return StepResult(
-            step_index=0, description="Copy deck",
-            success=False, error=str(e),
+            step_index=0,
+            description="Copy deck",
+            success=False,
+            error=str(e),
         )
     except OSError as e:
         return StepResult(
-            step_index=0, description="Copy deck",
-            success=False, error=f"Copy failed: {e}",
+            step_index=0,
+            description="Copy deck",
+            success=False,
+            error=f"Copy failed: {e}",
         )
 
 
@@ -672,7 +746,8 @@ def rebuild_index_action(params: dict[str, str]) -> StepResult:
 
     stats = rebuild_index()
     return StepResult(
-        step_index=0, description="Rebuild index",
+        step_index=0,
+        description="Rebuild index",
         success=True,
         output=(
             f"Indexed {stats.projects_indexed} projects, "
@@ -689,8 +764,10 @@ def query_knowledge_action(params: dict[str, str]) -> StepResult:
     query = params.get("query", params.get("title", ""))
     if not query:
         return StepResult(
-            step_index=0, description="Query knowledge",
-            success=False, error="No query provided",
+            step_index=0,
+            description="Query knowledge",
+            success=False,
+            error="No query provided",
         )
 
     project_filter = params.get("project")
@@ -698,8 +775,10 @@ def query_knowledge_action(params: dict[str, str]) -> StepResult:
 
     if not results:
         return StepResult(
-            step_index=0, description="Query knowledge",
-            success=True, output=f"No results for '{query}'",
+            step_index=0,
+            description="Query knowledge",
+            success=True,
+            output=f"No results for '{query}'",
         )
 
     lines = [f"Found {len(results)} results for '{query}':"]
@@ -709,8 +788,10 @@ def query_knowledge_action(params: dict[str, str]) -> StepResult:
             lines.append(f"    source: {r.source_title}")
 
     return StepResult(
-        step_index=0, description="Query knowledge",
-        success=True, output="\n".join(lines),
+        step_index=0,
+        description="Query knowledge",
+        success=True,
+        output="\n".join(lines),
     )
 
 
@@ -732,8 +813,10 @@ def show_analytics_action(params: dict[str, str]) -> StepResult:
         lines.append("Top products: " + ", ".join(f"{p}({c})" for p, c in report.top_products[:5]))
 
     return StepResult(
-        step_index=0, description="Show analytics",
-        success=True, output="\n".join(lines),
+        step_index=0,
+        description="Show analytics",
+        success=True,
+        output="\n".join(lines),
     )
 
 
@@ -745,8 +828,8 @@ def _write_analytics_dashboard(report) -> None:
     lines = [
         "---",
         "title: Cross-Project Analytics",
-        f"date: \"{today}\"",
-        f"generated: \"{today}\"",
+        f'date: "{today}"',
+        f'generated: "{today}"',
         "source_tool: corp-by-os",
         "tags: [dashboard, auto-generated, analytics]",
         "---",
@@ -830,6 +913,7 @@ def _resolve_project_id(project: str, params: dict[str, str]) -> str:
     # Try fuzzy resolution
     try:
         from corp_by_os.project_resolver import resolve_project
+
         resolved = resolve_project(project)
         if resolved:
             return resolved.project_id
@@ -852,6 +936,7 @@ def _resolve_project_path(project: str, params: dict[str, str]) -> Path | None:
 
     try:
         from corp_by_os.project_resolver import resolve_project
+
         resolved = resolve_project(project)
         if resolved and resolved.onedrive_path:
             return resolved.onedrive_path

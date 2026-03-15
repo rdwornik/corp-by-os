@@ -9,7 +9,7 @@ Requires DEEPSEEK_API_KEY in .env.
 
 import json
 import logging
-from typing import Optional, Any
+from typing import Any
 
 import httpx
 
@@ -47,7 +47,7 @@ class DeepSeekClient:
     def complete(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 8192,
         temperature: float = 0.0,
     ) -> str:
@@ -74,12 +74,16 @@ class DeepSeekClient:
     def complete_json(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 8192,
     ) -> Any:
         """Send prompt, parse and return JSON response."""
-        json_system = (system or "") + "\nRespond with valid JSON only. No markdown, no explanation."
-        text = self.complete(prompt, system=json_system.strip(), max_tokens=max_tokens, temperature=0.0)
+        json_system = (
+            system or ""
+        ) + "\nRespond with valid JSON only. No markdown, no explanation."
+        text = self.complete(
+            prompt, system=json_system.strip(), max_tokens=max_tokens, temperature=0.0
+        )
         text = text.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[-1]
@@ -91,7 +95,7 @@ class DeepSeekClient:
             raise ValueError(f"Model did not return valid JSON: {e}") from e
 
 
-_client: Optional[DeepSeekClient] = None
+_client: DeepSeekClient | None = None
 
 
 def get_client() -> DeepSeekClient:

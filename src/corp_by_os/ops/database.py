@@ -161,7 +161,8 @@ class OpsDB:
         now = self._now()
 
         existing = self.conn.execute(
-            "SELECT id FROM assets WHERE path = ?", (path,),
+            "SELECT id FROM assets WHERE path = ?",
+            (path,),
         ).fetchone()
 
         if existing:
@@ -171,8 +172,7 @@ class OpsDB:
                      mtime = ?, folder_l1 = ?, folder_l2 = ?,
                      last_scanned = ?
                    WHERE path = ?""",
-                (filename, extension, size_bytes, mtime, folder_l1,
-                 folder_l2, now, path),
+                (filename, extension, size_bytes, mtime, folder_l1, folder_l2, now, path),
             )
             self.conn.commit()
             return existing["id"]
@@ -182,8 +182,7 @@ class OpsDB:
                (path, filename, extension, size_bytes, mtime,
                 folder_l1, folder_l2, first_seen, last_scanned)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (path, filename, extension, size_bytes, mtime,
-             folder_l1, folder_l2, now, now),
+            (path, filename, extension, size_bytes, mtime, folder_l1, folder_l2, now, now),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -192,21 +191,24 @@ class OpsDB:
         """Get asset by relative path."""
         path = path.replace("\\", "/")
         row = self.conn.execute(
-            "SELECT * FROM assets WHERE path = ?", (path,),
+            "SELECT * FROM assets WHERE path = ?",
+            (path,),
         ).fetchone()
         return dict(row) if row else None
 
     def get_assets_by_status(self, status: str) -> list[dict]:
         """Get all assets with given status."""
         rows = self.conn.execute(
-            "SELECT * FROM assets WHERE status = ?", (status,),
+            "SELECT * FROM assets WHERE status = ?",
+            (status,),
         ).fetchall()
         return [dict(r) for r in rows]
 
     def get_assets_by_folder(self, folder_l1: str) -> list[dict]:
         """Get all assets in a given L1 folder."""
         rows = self.conn.execute(
-            "SELECT * FROM assets WHERE folder_l1 = ?", (folder_l1,),
+            "SELECT * FROM assets WHERE folder_l1 = ?",
+            (folder_l1,),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -226,7 +228,8 @@ class OpsDB:
         self.conn.commit()
         if cur.rowcount == 0:
             logger.warning(
-                "update_asset_path: no asset found at old path: %s", old_path,
+                "update_asset_path: no asset found at old path: %s",
+                old_path,
             )
             return False
         return True
@@ -315,8 +318,16 @@ class OpsDB:
                (folder_name, source_path, file_count, total_size_bytes,
                 inferred_topic, inferred_products, inferred_domains, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (folder_name, source_path, file_count, total_size,
-             inferred_topic, inferred_products, inferred_domains, self._now()),
+            (
+                folder_name,
+                source_path,
+                file_count,
+                total_size,
+                inferred_topic,
+                inferred_products,
+                inferred_domains,
+                self._now(),
+            ),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -324,7 +335,8 @@ class OpsDB:
     def get_package(self, package_id: int) -> dict | None:
         """Get package by ID."""
         row = self.conn.execute(
-            "SELECT * FROM packages WHERE id = ?", (package_id,),
+            "SELECT * FROM packages WHERE id = ?",
+            (package_id,),
         ).fetchone()
         return dict(row) if row else None
 
@@ -382,9 +394,19 @@ class OpsDB:
                (asset_id, package_id, action, source_path, destination_path,
                 method, confidence, reasoning, cost, timestamp, reversible)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (asset_id, package_id, action, source_path, destination_path,
-             method, confidence, reasoning, cost, self._now(),
-             1 if reversible else 0),
+            (
+                asset_id,
+                package_id,
+                action,
+                source_path,
+                destination_path,
+                method,
+                confidence,
+                reasoning,
+                cost,
+                self._now(),
+                1 if reversible else 0,
+            ),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -445,8 +467,7 @@ class OpsDB:
             """INSERT INTO registry_suggestions
                (pattern, proposed_series, proposed_destination, evidence, created_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (pattern, proposed_series, proposed_destination, evidence,
-             self._now()),
+            (pattern, proposed_series, proposed_destination, evidence, self._now()),
         )
         self.conn.commit()
         return cur.lastrowid  # type: ignore[return-value]

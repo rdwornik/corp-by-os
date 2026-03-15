@@ -72,12 +72,15 @@ def _check_config_files(
 
     # routing_map.yaml
     if not routing_map_path.exists():
-        report.issues.append(IntegrityIssue(
-            category="config", severity="error",
-            description="routing_map.yaml missing",
-            path=str(routing_map_path),
-            fix_hint="Run Phase 0 setup or restore from git",
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="config",
+                severity="error",
+                description="routing_map.yaml missing",
+                path=str(routing_map_path),
+                fix_hint="Run Phase 0 setup or restore from git",
+            )
+        )
         report.checks_failed += 1
     else:
         try:
@@ -85,41 +88,53 @@ def _check_config_files(
                 yaml.safe_load(f)
             report.checks_passed += 1
         except Exception as exc:
-            report.issues.append(IntegrityIssue(
-                category="config", severity="error",
-                description=f"routing_map.yaml parse error: {exc}",
-                path=str(routing_map_path),
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="config",
+                    severity="error",
+                    description=f"routing_map.yaml parse error: {exc}",
+                    path=str(routing_map_path),
+                )
+            )
             report.checks_failed += 1
 
     # content_registry.yaml
     if not registry_path.exists():
-        report.issues.append(IntegrityIssue(
-            category="config", severity="error",
-            description="content_registry.yaml missing",
-            path=str(registry_path),
-            fix_hint="Copy from config/content_registry.yaml in repo",
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="config",
+                severity="error",
+                description="content_registry.yaml missing",
+                path=str(registry_path),
+                fix_hint="Copy from config/content_registry.yaml in repo",
+            )
+        )
         report.checks_failed += 1
     else:
         try:
             with open(registry_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if not isinstance(data, dict) or "series" not in data:
-                report.issues.append(IntegrityIssue(
-                    category="config", severity="warning",
-                    description='content_registry.yaml missing "series" section',
-                    path=str(registry_path),
-                ))
+                report.issues.append(
+                    IntegrityIssue(
+                        category="config",
+                        severity="warning",
+                        description='content_registry.yaml missing "series" section',
+                        path=str(registry_path),
+                    )
+                )
                 report.checks_warned += 1
             else:
                 report.checks_passed += 1
         except Exception as exc:
-            report.issues.append(IntegrityIssue(
-                category="config", severity="error",
-                description=f"content_registry.yaml parse error: {exc}",
-                path=str(registry_path),
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="config",
+                    severity="error",
+                    description=f"content_registry.yaml parse error: {exc}",
+                    path=str(registry_path),
+                )
+            )
             report.checks_failed += 1
 
 
@@ -150,12 +165,15 @@ def _check_registry_paths(
             continue
         dest_path = mywork_root / dest
         if not dest_path.exists():
-            report.issues.append(IntegrityIssue(
-                category="registry", severity="warning",
-                description=f'Series "{series_id}" destination missing: {dest}',
-                path=dest,
-                fix_hint=f'Create folder: mkdir "{dest_path}"',
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="registry",
+                    severity="warning",
+                    description=f'Series "{series_id}" destination missing: {dest}',
+                    path=dest,
+                    fix_hint=f'Create folder: mkdir "{dest_path}"',
+                )
+            )
             report.checks_warned += 1
         else:
             report.checks_passed += 1
@@ -167,12 +185,15 @@ def _check_registry_paths(
             continue
         dest_path = mywork_root / dest
         if not dest_path.exists():
-            report.issues.append(IntegrityIssue(
-                category="registry", severity="warning",
-                description=f'Rule "{rule.get("name", "unnamed")}" destination missing: {dest}',
-                path=dest,
-                fix_hint=f'Create folder: mkdir "{dest_path}"',
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="registry",
+                    severity="warning",
+                    description=f'Rule "{rule.get("name", "unnamed")}" destination missing: {dest}',
+                    path=dest,
+                    fix_hint=f'Create folder: mkdir "{dest_path}"',
+                )
+            )
             report.checks_warned += 1
         else:
             report.checks_passed += 1
@@ -185,11 +206,14 @@ def _check_ops_db(
 ) -> None:
     """Verify ops.db consistency — assets point to real files."""
     if not ops_db_path.exists():
-        report.issues.append(IntegrityIssue(
-            category="ops_db", severity="info",
-            description="ops.db does not exist yet (no ingest has run)",
-            path=str(ops_db_path),
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="ops_db",
+                severity="info",
+                description="ops.db does not exist yet (no ingest has run)",
+                path=str(ops_db_path),
+            )
+        )
         report.checks_passed += 1
         return
 
@@ -207,21 +231,29 @@ def _check_ops_db(
             if not file_path.exists():
                 missing_count += 1
                 if missing_count <= 5:
-                    report.issues.append(IntegrityIssue(
-                        category="ops_db", severity="warning",
-                        description=(
-                            f"Asset in ops.db not found on disk: "
-                            f"{row['path']} (status: {row['status']})"
-                        ),
-                        path=row["path"],
-                        fix_hint="File was moved/deleted outside corp-by-os. Update or re-scan.",
-                    ))
+                    report.issues.append(
+                        IntegrityIssue(
+                            category="ops_db",
+                            severity="warning",
+                            description=(
+                                f"Asset in ops.db not found on disk: "
+                                f"{row['path']} (status: {row['status']})"
+                            ),
+                            path=row["path"],
+                            fix_hint=(
+                                "File was moved/deleted outside corp-by-os. Update or re-scan."
+                            ),
+                        )
+                    )
 
         if missing_count > 5:
-            report.issues.append(IntegrityIssue(
-                category="ops_db", severity="warning",
-                description=f"...and {missing_count - 5} more assets missing from disk",
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="ops_db",
+                    severity="warning",
+                    description=f"...and {missing_count - 5} more assets missing from disk",
+                )
+            )
 
         if missing_count > 0:
             report.checks_warned += 1
@@ -233,19 +265,25 @@ def _check_ops_db(
             "SELECT COUNT(*) FROM assets WHERE status = 'pending'",
         ).fetchone()[0]
         if pending > 0:
-            report.issues.append(IntegrityIssue(
-                category="ops_db", severity="info",
-                description=f"{pending} assets still pending in ops.db",
-                fix_hint="Run corp overnight or corp ingest to process them",
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="ops_db",
+                    severity="info",
+                    description=f"{pending} assets still pending in ops.db",
+                    fix_hint="Run corp overnight or corp ingest to process them",
+                )
+            )
 
         conn.close()
     except Exception as exc:
-        report.issues.append(IntegrityIssue(
-            category="ops_db", severity="error",
-            description=f"ops.db read error: {exc}",
-            path=str(ops_db_path),
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="ops_db",
+                severity="error",
+                description=f"ops.db read error: {exc}",
+                path=str(ops_db_path),
+            )
+        )
         report.checks_failed += 1
 
 
@@ -256,12 +294,15 @@ def _check_vault_index(
 ) -> None:
     """Verify index.db is in sync with vault notes."""
     if not index_db_path.exists():
-        report.issues.append(IntegrityIssue(
-            category="index", severity="error",
-            description="index.db missing",
-            path=str(index_db_path),
-            fix_hint="Run: corp index rebuild",
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="index",
+                severity="error",
+                description="index.db missing",
+                path=str(index_db_path),
+                fix_hint="Run: corp index rebuild",
+            )
+        )
         report.checks_failed += 1
         return
 
@@ -275,42 +316,48 @@ def _check_vault_index(
         vault_count = 0
         for scan_dir in [vault_root / "02_sources", vault_root / "04_evergreen"]:
             if scan_dir.exists():
-                vault_count += sum(
-                    1 for f in scan_dir.rglob("*.md")
-                    if f.name not in skip_names
-                )
+                vault_count += sum(1 for f in scan_dir.rglob("*.md") if f.name not in skip_names)
 
         drift = abs(index_count - vault_count)
         if drift > 50:
-            report.issues.append(IntegrityIssue(
-                category="index", severity="warning",
-                description=(
-                    f"Index drift: {index_count} indexed vs "
-                    f"{vault_count} vault notes (diff: {drift})"
-                ),
-                fix_hint="Run: corp index rebuild",
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="index",
+                    severity="warning",
+                    description=(
+                        f"Index drift: {index_count} indexed vs "
+                        f"{vault_count} vault notes (diff: {drift})"
+                    ),
+                    fix_hint="Run: corp index rebuild",
+                )
+            )
             report.checks_warned += 1
         elif drift > 0:
-            report.issues.append(IntegrityIssue(
-                category="index", severity="info",
-                description=(
-                    f"Minor index drift: {index_count} indexed vs "
-                    f"{vault_count} vault notes (diff: {drift})"
-                ),
-                fix_hint="Run: corp index rebuild",
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="index",
+                    severity="info",
+                    description=(
+                        f"Minor index drift: {index_count} indexed vs "
+                        f"{vault_count} vault notes (diff: {drift})"
+                    ),
+                    fix_hint="Run: corp index rebuild",
+                )
+            )
             report.checks_passed += 1
         else:
             report.checks_passed += 1
 
         conn.close()
     except Exception as exc:
-        report.issues.append(IntegrityIssue(
-            category="index", severity="error",
-            description=f"index.db read error: {exc}",
-            path=str(index_db_path),
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="index",
+                severity="error",
+                description=f"index.db read error: {exc}",
+                path=str(index_db_path),
+            )
+        )
         report.checks_failed += 1
 
 
@@ -320,20 +367,28 @@ def _check_mywork_structure(
 ) -> None:
     """Verify MyWork folder structure is intact."""
     required_folders = [
-        "00_Inbox", "10_Projects", "20_Extra_Initiatives",
-        "30_Templates", "50_RFP", "60_Source_Library",
-        "70_Admin", "90_System",
+        "00_Inbox",
+        "10_Projects",
+        "20_Extra_Initiatives",
+        "30_Templates",
+        "50_RFP",
+        "60_Source_Library",
+        "70_Admin",
+        "90_System",
     ]
 
     for folder in required_folders:
         folder_path = mywork_root / folder
         if not folder_path.exists():
-            report.issues.append(IntegrityIssue(
-                category="filesystem", severity="error",
-                description=f"Required MyWork folder missing: {folder}",
-                path=folder,
-                fix_hint=f'Create: mkdir "{folder_path}"',
-            ))
+            report.issues.append(
+                IntegrityIssue(
+                    category="filesystem",
+                    severity="error",
+                    description=f"Required MyWork folder missing: {folder}",
+                    path=folder,
+                    fix_hint=f'Create: mkdir "{folder_path}"',
+                )
+            )
             report.checks_failed += 1
         else:
             report.checks_passed += 1
@@ -349,7 +404,9 @@ def _check_inbox(
         return
 
     skip_names = {
-        "_triage_log.jsonl", "_triage_schema.yaml", "folder_manifest.yaml",
+        "_triage_log.jsonl",
+        "_triage_schema.yaml",
+        "folder_manifest.yaml",
     }
     skip_dirs = {"_Unmatched", "_Staging"}
 
@@ -360,21 +417,25 @@ def _check_inbox(
         if item.is_dir() and item.name in skip_dirs:
             quarantined = [x for x in item.rglob("*") if x.is_file()]
             if quarantined:
-                report.issues.append(IntegrityIssue(
-                    category="filesystem", severity="info",
-                    description=(
-                        f"{len(quarantined)} files in {item.name}/ awaiting review"
-                    ),
-                    path=f"00_Inbox/{item.name}",
-                    fix_hint="Run: corp classify or corp finalize",
-                ))
+                report.issues.append(
+                    IntegrityIssue(
+                        category="filesystem",
+                        severity="info",
+                        description=(f"{len(quarantined)} files in {item.name}/ awaiting review"),
+                        path=f"00_Inbox/{item.name}",
+                        fix_hint="Run: corp classify or corp finalize",
+                    )
+                )
             continue
         files.append(item)
 
     if files:
-        report.issues.append(IntegrityIssue(
-            category="filesystem", severity="info",
-            description=f"{len(files)} file(s) in Inbox awaiting ingest",
-            path="00_Inbox",
-            fix_hint="Run: corp ingest",
-        ))
+        report.issues.append(
+            IntegrityIssue(
+                category="filesystem",
+                severity="info",
+                description=f"{len(files)} file(s) in Inbox awaiting ingest",
+                path="00_Inbox",
+                fix_hint="Run: corp ingest",
+            )
+        )

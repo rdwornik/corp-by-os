@@ -12,6 +12,7 @@ import pytest
 
 from corp_by_os.freshness.scanner import (
     REVIEW_AGE_DAYS,
+    SKIP_FILENAMES,
     FreshnessResult,
     FreshnessSummary,
     compute_hash,
@@ -302,3 +303,26 @@ class TestScanVaultFreshness:
 
         summary = scan_vault_freshness(vault, mywork)
         assert summary.total_scanned == 2
+
+    def test_skips_cke_package_files(self, tmp_path: Path) -> None:
+        """synthesis.md and index.md are skipped (CKE package files)."""
+        vault = tmp_path / "vault"
+        mywork = tmp_path / "mywork"
+        mywork.mkdir()
+        sources_dir = vault / "02_sources" / "some_package"
+        sources_dir.mkdir(parents=True)
+
+        # CKE package files — no frontmatter, would cause 'error' if scanned
+        for skip_name in SKIP_FILENAMES:
+            f = sources_dir / skip_name
+            f.write_text("# Summary\nNo YAML frontmatter here.", encoding="utf-8")
+
+        # Regular note — should be scanned
+        _write_note(sources_dir / "actual_note.md")
+
+        summary = scan_vault_freshness(vault, mywork)
+        assert summary.total_scanned == 1
+        assert summary.errors == 0
+        scanned_names = [Path(r.note_path).name for r in summary.results]
+        assert "synthesis.md" not in scanned_names
+        assert "index.md" not in scanned_names

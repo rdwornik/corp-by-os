@@ -23,6 +23,7 @@ import yaml
 
 from corp_by_os.config import get_config
 from corp_by_os.models import (
+    ZONE_MUTABILITY,
     Mutability,
     ProjectInfo,
     ProjectSummary,
@@ -30,7 +31,6 @@ from corp_by_os.models import (
     ValidationReport,
     VaultPath,
     VaultZone,
-    ZONE_MUTABILITY,
 )
 
 logger = logging.getLogger(__name__)
@@ -353,24 +353,36 @@ def validate_vault(project_id: str | None = None) -> ValidationReport:
     elif projects_dir.exists():
         folders = [f for f in sorted(projects_dir.iterdir()) if f.is_dir()]
     else:
-        report.issues.append(ValidationIssue(
-            path=projects_dir, level="error", message="Projects directory not found",
-        ))
+        report.issues.append(
+            ValidationIssue(
+                path=projects_dir,
+                level="error",
+                message="Projects directory not found",
+            )
+        )
         return report
 
     for folder in folders:
         if not folder.exists():
-            report.issues.append(ValidationIssue(
-                path=folder, level="error", message="Project folder not found",
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    path=folder,
+                    level="error",
+                    message="Project folder not found",
+                )
+            )
             continue
 
         # Check project-info.yaml
         info_file = folder / "project-info.yaml"
         if not info_file.exists():
-            report.issues.append(ValidationIssue(
-                path=info_file, level="warning", message="Missing project-info.yaml",
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    path=info_file,
+                    level="warning",
+                    message="Missing project-info.yaml",
+                )
+            )
         else:
             _validate_project_info(info_file, report)
 
@@ -396,24 +408,35 @@ def _validate_project_info(path: Path, report: ValidationReport) -> None:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except Exception as e:
-        report.issues.append(ValidationIssue(
-            path=path, level="error", message=f"Failed to parse YAML: {e}",
-        ))
+        report.issues.append(
+            ValidationIssue(
+                path=path,
+                level="error",
+                message=f"Failed to parse YAML: {e}",
+            )
+        )
         return
 
     if not isinstance(data, dict):
-        report.issues.append(ValidationIssue(
-            path=path, level="error", message="project-info.yaml is not a valid mapping",
-        ))
+        report.issues.append(
+            ValidationIssue(
+                path=path,
+                level="error",
+                message="project-info.yaml is not a valid mapping",
+            )
+        )
         return
 
     required = ["project_id", "client", "status"]
     for field_name in required:
         if field_name not in data:
-            report.issues.append(ValidationIssue(
-                path=path, level="error",
-                message=f"Missing required field: {field_name}",
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    path=path,
+                    level="error",
+                    message=f"Missing required field: {field_name}",
+                )
+            )
 
 
 def _validate_note_frontmatter(path: Path, report: ValidationReport) -> None:
@@ -425,9 +448,13 @@ def _validate_note_frontmatter(path: Path, report: ValidationReport) -> None:
         content = path.read_text(encoding="utf-8")
         fm, _ = _parse_frontmatter(content)
         if not fm:
-            report.issues.append(ValidationIssue(
-                path=path, level="warning", message="No frontmatter found",
-            ))
+            report.issues.append(
+                ValidationIssue(
+                    path=path,
+                    level="warning",
+                    message="No frontmatter found",
+                )
+            )
             return
 
         status, _model, issues = validate_frontmatter(fm)
@@ -436,18 +463,30 @@ def _validate_note_frontmatter(path: Path, report: ValidationReport) -> None:
         elif status == VR.WARNINGS:
             report.notes_valid += 1
             for issue in issues:
-                report.issues.append(ValidationIssue(
-                    path=path, level="warning", message=str(issue),
-                ))
+                report.issues.append(
+                    ValidationIssue(
+                        path=path,
+                        level="warning",
+                        message=str(issue),
+                    )
+                )
         else:  # QUARANTINE
             for issue in issues:
-                report.issues.append(ValidationIssue(
-                    path=path, level="error", message=str(issue),
-                ))
+                report.issues.append(
+                    ValidationIssue(
+                        path=path,
+                        level="error",
+                        message=str(issue),
+                    )
+                )
     except ImportError:
         # corp-os-meta not available — skip frontmatter validation
         report.notes_valid += 1
     except Exception as e:
-        report.issues.append(ValidationIssue(
-            path=path, level="warning", message=f"Validation error: {e}",
-        ))
+        report.issues.append(
+            ValidationIssue(
+                path=path,
+                level="warning",
+                message=f"Validation error: {e}",
+            )
+        )

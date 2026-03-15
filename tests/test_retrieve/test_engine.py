@@ -144,9 +144,14 @@ def test_db(tmp_path: Path) -> Path:
                 topics, products, domains, note_path)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                note["project_id"], note["client"], note["title"],
-                note["type"], note["source_type"],
-                note["topics"], note["products"], note["domains"],
+                note["project_id"],
+                note["client"],
+                note["title"],
+                note["type"],
+                note["source_type"],
+                note["topics"],
+                note["products"],
+                note["domains"],
                 note["note_path"],
             ),
         )
@@ -206,7 +211,8 @@ class TestRetrieveBasic:
         """Client filter narrows results to matching client."""
         result = retrieve(
             "planning",
-            test_db, vault_root,
+            test_db,
+            vault_root,
             filters=RetrievalFilter(client="Lenzing"),
         )
         assert all(n.client == "Lenzing" for n in result.notes)
@@ -215,7 +221,8 @@ class TestRetrieveBasic:
         """Product filter narrows results."""
         result = retrieve(
             "architecture",
-            test_db, vault_root,
+            test_db,
+            vault_root,
             filters=RetrievalFilter(products=["WMS"]),
         )
         for note in result.notes:
@@ -250,13 +257,17 @@ class TestRetrieveBasic:
     def test_sufficient_flag(self, test_db: Path, vault_root: Path) -> None:
         """sufficient=True when >= min_results."""
         result = retrieve(
-            "Lenzing", test_db, vault_root,
+            "Lenzing",
+            test_db,
+            vault_root,
             min_results_for_sufficient=2,
         )
         assert result.sufficient is True
 
         result2 = retrieve(
-            "Lenzing", test_db, vault_root,
+            "Lenzing",
+            test_db,
+            vault_root,
             min_results_for_sufficient=100,
         )
         assert result2.sufficient is False
@@ -265,7 +276,8 @@ class TestRetrieveBasic:
         """Coverage gaps identify missing products."""
         result = retrieve(
             "Lenzing",
-            test_db, vault_root,
+            test_db,
+            vault_root,
             filters=RetrievalFilter(
                 client="Lenzing",
                 products=["TMS"],  # Lenzing has no TMS notes
@@ -281,12 +293,15 @@ class TestRetrieveBasic:
         assert "client: Lenzing" in note.citation
 
     def test_metadata_only_results(
-        self, test_db: Path, vault_root: Path,
+        self,
+        test_db: Path,
+        vault_root: Path,
     ) -> None:
         """Client filter returns notes even without FTS match."""
         result = retrieve(
             "xyznonexistent",
-            test_db, vault_root,
+            test_db,
+            vault_root,
             filters=RetrievalFilter(client="SGDBF"),
         )
         # Should find SGDBF notes via metadata even though FTS found nothing
@@ -294,7 +309,9 @@ class TestRetrieveBasic:
         assert result.notes[0].client == "SGDBF"
 
     def test_result_has_parsed_json_fields(
-        self, test_db: Path, vault_root: Path,
+        self,
+        test_db: Path,
+        vault_root: Path,
     ) -> None:
         """Topics, products, domains are parsed from JSON."""
         result = retrieve("Lenzing Discovery", test_db, vault_root)
@@ -380,10 +397,19 @@ class TestHelpers:
         filters = RetrievalFilter(products=["WMS", "TMS"])
         notes = [
             RetrievedNote(
-                note_id=1, title="t", client="c", project_id="p",
-                topics=[], products=["WMS"], domains=[],
-                source_type="", note_type="", note_path="",
-                content="", relevance_score=0, citation="",
+                note_id=1,
+                title="t",
+                client="c",
+                project_id="p",
+                topics=[],
+                products=["WMS"],
+                domains=[],
+                source_type="",
+                note_type="",
+                note_path="",
+                content="",
+                relevance_score=0,
+                citation="",
             ),
         ]
         gaps = _find_coverage_gaps("q", filters, notes)
@@ -402,6 +428,7 @@ class TestFallbackSearch:
         # This should not raise — fallback handles it
         result = retrieve(
             "NEAR(broken query",
-            test_db, vault_root,
+            test_db,
+            vault_root,
         )
         assert isinstance(result, RetrievalResult)

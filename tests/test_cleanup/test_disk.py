@@ -78,7 +78,8 @@ class TestFindOverlap:
         (onedrive / "demo.pptx").write_bytes(content)
 
         plan = find_onedrive_overlap(
-            tmp_path / "local", tmp_path / "onedrive",
+            tmp_path / "local",
+            tmp_path / "onedrive",
         )
         assert plan.total_files == 1
 
@@ -219,13 +220,15 @@ class TestExecutePlan:
         target.write_bytes(b"content")
 
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path=str(target),
-            filename="to_delete.txt",
-            size_bytes=7,
-            category="artifact",
-            reason="test",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(target),
+                filename="to_delete.txt",
+                size_bytes=7,
+                category="artifact",
+                reason="test",
+            )
+        )
 
         log_path = tmp_path / "log.jsonl"
         deleted, failed = execute_plan(plan, log_path, dry_run=True)
@@ -241,13 +244,15 @@ class TestExecutePlan:
         target.write_bytes(b"delete me")
 
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path=str(target),
-            filename="to_delete.txt",
-            size_bytes=9,
-            category="overlap",
-            reason="test deletion",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(target),
+                filename="to_delete.txt",
+                size_bytes=9,
+                category="overlap",
+                reason="test deletion",
+            )
+        )
 
         log_path = tmp_path / "cleanup_log.jsonl"
         deleted, failed = execute_plan(plan, log_path, dry_run=False)
@@ -266,13 +271,15 @@ class TestExecutePlan:
     def test_execute_missing_file(self, tmp_path: Path) -> None:
         """Missing file counts as failed, not crashed."""
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path=str(tmp_path / "ghost.txt"),
-            filename="ghost.txt",
-            size_bytes=100,
-            category="artifact",
-            reason="test",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(tmp_path / "ghost.txt"),
+                filename="ghost.txt",
+                size_bytes=100,
+                category="artifact",
+                reason="test",
+            )
+        )
 
         log_path = tmp_path / "log.jsonl"
         deleted, failed = execute_plan(plan, log_path, dry_run=False)
@@ -286,13 +293,15 @@ class TestExecutePlan:
         for i in range(3):
             f = tmp_path / f"file_{i}.txt"
             f.write_bytes(b"x")
-            plan.add(CleanupItem(
-                path=str(f),
-                filename=f.name,
-                size_bytes=1,
-                category="duplicate",
-                reason="test",
-            ))
+            plan.add(
+                CleanupItem(
+                    path=str(f),
+                    filename=f.name,
+                    size_bytes=1,
+                    category="duplicate",
+                    reason="test",
+                )
+            )
 
         log_path = tmp_path / "log.jsonl"
         deleted, failed = execute_plan(plan, log_path, dry_run=False)
@@ -309,13 +318,15 @@ class TestExecutePlan:
         target.write_bytes(b"x")
 
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path=str(target),
-            filename="only_file.txt",
-            size_bytes=1,
-            category="artifact",
-            reason="test",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(target),
+                filename="only_file.txt",
+                size_bytes=1,
+                category="artifact",
+                reason="test",
+            )
+        )
 
         log_path = tmp_path / "log.jsonl"
         execute_plan(plan, log_path, dry_run=False)
@@ -330,14 +341,24 @@ class TestCleanupPlan:
     def test_totals(self) -> None:
         """Plan tracks total bytes and files."""
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path="/a.txt", filename="a.txt",
-            size_bytes=1024, category="test", reason="test",
-        ))
-        plan.add(CleanupItem(
-            path="/b.txt", filename="b.txt",
-            size_bytes=2048, category="test", reason="test",
-        ))
+        plan.add(
+            CleanupItem(
+                path="/a.txt",
+                filename="a.txt",
+                size_bytes=1024,
+                category="test",
+                reason="test",
+            )
+        )
+        plan.add(
+            CleanupItem(
+                path="/b.txt",
+                filename="b.txt",
+                size_bytes=2048,
+                category="test",
+                reason="test",
+            )
+        )
 
         assert plan.total_files == 2
         assert plan.total_bytes == 3072
@@ -346,9 +367,13 @@ class TestCleanupPlan:
     def test_total_gb(self) -> None:
         """GB calculation works."""
         plan = CleanupPlan()
-        plan.add(CleanupItem(
-            path="/big.bin", filename="big.bin",
-            size_bytes=2 * 1024**3,  # 2 GB
-            category="test", reason="test",
-        ))
+        plan.add(
+            CleanupItem(
+                path="/big.bin",
+                filename="big.bin",
+                size_bytes=2 * 1024**3,  # 2 GB
+                category="test",
+                reason="test",
+            )
+        )
         assert plan.total_gb == 2.0

@@ -79,6 +79,7 @@ class TestChatLoop:
     @patch("corp_by_os.chat.console")
     def test_quit_exits_loop(self, mock_console) -> None:
         from corp_by_os.chat import chat_loop
+
         mock_console.input.return_value = "quit"
         chat_loop(use_llm=False)
         # Should exit without error
@@ -86,18 +87,21 @@ class TestChatLoop:
     @patch("corp_by_os.chat.console")
     def test_empty_input_continues(self, mock_console) -> None:
         from corp_by_os.chat import chat_loop
+
         mock_console.input.side_effect = ["", "quit"]
         chat_loop(use_llm=False)
 
     @patch("corp_by_os.chat.console")
     def test_eof_exits(self, mock_console) -> None:
         from corp_by_os.chat import chat_loop
+
         mock_console.input.side_effect = EOFError()
         chat_loop(use_llm=False)
 
     @patch("corp_by_os.chat.console")
     def test_keyboard_interrupt_exits(self, mock_console) -> None:
         from corp_by_os.chat import chat_loop
+
         mock_console.input.side_effect = KeyboardInterrupt()
         chat_loop(use_llm=False)
 

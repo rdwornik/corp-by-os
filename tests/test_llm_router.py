@@ -48,24 +48,28 @@ def simple_workflows() -> dict[str, Workflow]:
 
 class TestParseLLMResponse:
     def test_valid_json(self) -> None:
-        response = json.dumps({
-            "workflow_id": "attention_scan",
-            "parameters": {},
-            "confidence": 0.95,
-            "response_text": None,
-        })
+        response = json.dumps(
+            {
+                "workflow_id": "attention_scan",
+                "parameters": {},
+                "confidence": 0.95,
+                "response_text": None,
+            }
+        )
         intent = _parse_llm_response(response)
         assert intent.workflow_id == "attention_scan"
         assert intent.confidence == 0.95
         assert intent.source == "llm"
 
     def test_json_with_params(self) -> None:
-        response = json.dumps({
-            "workflow_id": "new_opportunity",
-            "parameters": {"client": "Bosch", "product": "WMS", "contact": None},
-            "confidence": 0.9,
-            "response_text": None,
-        })
+        response = json.dumps(
+            {
+                "workflow_id": "new_opportunity",
+                "parameters": {"client": "Bosch", "product": "WMS", "contact": None},
+                "confidence": 0.9,
+                "response_text": None,
+            }
+        )
         intent = _parse_llm_response(response)
         assert intent.parameters == {"client": "Bosch", "product": "WMS"}
         assert "contact" not in intent.parameters  # null filtered out
@@ -76,12 +80,14 @@ class TestParseLLMResponse:
         assert intent.workflow_id == "attention_scan"
 
     def test_chitchat_response(self) -> None:
-        response = json.dumps({
-            "workflow_id": None,
-            "parameters": {},
-            "confidence": 0.1,
-            "response_text": "Hej! Czym mogę pomóc?",
-        })
+        response = json.dumps(
+            {
+                "workflow_id": None,
+                "parameters": {},
+                "confidence": 0.1,
+                "response_text": "Hej! Czym mogę pomóc?",
+            }
+        )
         intent = _parse_llm_response(response)
         assert intent.workflow_id is None
         assert intent.response_text == "Hej! Czym mogę pomóc?"
@@ -137,6 +143,7 @@ class TestUsageTracking:
         monkeypatch.setenv("LLM_DAILY_CAP", "3")
         path = tmp_path / "usage.json"
         from datetime import date
+
         _save_usage(path, {"date": date.today().isoformat(), "calls": 3})
         mock_path.return_value = path
         assert _check_daily_cap() is False
@@ -184,12 +191,14 @@ class TestClassifyIntent:
         monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
 
         mock_response = MagicMock()
-        mock_response.text = json.dumps({
-            "workflow_id": "attention_scan",
-            "parameters": {},
-            "confidence": 0.9,
-            "response_text": None,
-        })
+        mock_response.text = json.dumps(
+            {
+                "workflow_id": "attention_scan",
+                "parameters": {},
+                "confidence": 0.9,
+                "response_text": None,
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response

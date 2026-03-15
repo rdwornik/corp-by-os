@@ -98,7 +98,7 @@ def answer_rfp(
     3. LLM synthesis into structured RFP answer
     4. Assess confidence based on retrieval quality
     """
-    from corp_by_os.retrieve.prep import build_notes_context, _call_llm
+    from corp_by_os.retrieve.prep import _call_llm, build_notes_context
 
     # --- Step 1: Retrieve ---
     filters = RetrievalFilter(

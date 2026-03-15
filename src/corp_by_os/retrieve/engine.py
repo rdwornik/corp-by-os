@@ -154,9 +154,7 @@ def retrieve(
             where_clauses.append("n.type = ?")
             params.append(filters.type)
 
-        where_sql = (
-            " AND " + " AND ".join(where_clauses) if where_clauses else ""
-        )
+        where_sql = " AND " + " AND ".join(where_clauses) if where_clauses else ""
 
         # FTS5 search with BM25 ranking
         sql = f"""
@@ -200,7 +198,8 @@ def retrieve(
                 LIMIT ?
             """
             extra = conn.execute(
-                meta_sql, [f"%{filters.client}%", top_n - len(rows)],
+                meta_sql,
+                [f"%{filters.client}%", top_n - len(rows)],
             ).fetchall()
             rows = list(rows) + list(extra)
 
@@ -234,24 +233,26 @@ def retrieve(
                 f"source: {row['source_type'] or 'N/A'})"
             )
 
-            notes.append(RetrievedNote(
-                note_id=rid,
-                title=row["title"],
-                client=row["client"] or "",
-                project_id=row["project_id"] or "",
-                topics=topics,
-                products=products,
-                domains=domains,
-                source_type=row["source_type"] or "",
-                note_type=row["type"] or "",
-                note_path=str(note_path),
-                content=content,
-                relevance_score=float(row["rank"]),
-                citation=citation,
-                confidence=confidence,
-                extracted_at=meta.get("extracted_at", ""),
-                overlay_data=meta.get("overlay_data", {}),
-            ))
+            notes.append(
+                RetrievedNote(
+                    note_id=rid,
+                    title=row["title"],
+                    client=row["client"] or "",
+                    project_id=row["project_id"] or "",
+                    topics=topics,
+                    products=products,
+                    domains=domains,
+                    source_type=row["source_type"] or "",
+                    note_type=row["type"] or "",
+                    note_path=str(note_path),
+                    content=content,
+                    relevance_score=float(row["rank"]),
+                    citation=citation,
+                    confidence=confidence,
+                    extracted_at=meta.get("extracted_at", ""),
+                    overlay_data=meta.get("overlay_data", {}),
+                )
+            )
 
         notes = _apply_confidence_ranking(notes)
         sufficient = len(notes) >= min_results_for_sufficient
@@ -280,14 +281,69 @@ def _build_fts_query(query: str) -> str:
     broad recall (BM25 handles ranking).
     """
     stopwords = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been",
-        "being", "have", "has", "had", "do", "does", "did", "will",
-        "would", "could", "should", "may", "might", "can", "shall",
-        "of", "at", "by", "for", "with", "about", "between",
-        "to", "from", "in", "on", "and", "or", "not", "but",
-        "what", "which", "who", "whom", "this", "that", "these",
-        "those", "i", "me", "my", "we", "our", "you", "your",
-        "he", "him", "his", "she", "her", "it", "its", "they", "their",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "of",
+        "at",
+        "by",
+        "for",
+        "with",
+        "about",
+        "between",
+        "to",
+        "from",
+        "in",
+        "on",
+        "and",
+        "or",
+        "not",
+        "but",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "me",
+        "my",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "it",
+        "its",
+        "they",
+        "their",
     }
 
     words = query.lower().split()
@@ -317,7 +373,7 @@ def _load_note_content(note_path: Path) -> str:
     if text.startswith("---"):
         end = text.find("---", 3)
         if end != -1:
-            return text[end + 3:].strip()
+            return text[end + 3 :].strip()
 
     return text.strip()
 

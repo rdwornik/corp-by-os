@@ -191,7 +191,9 @@ class TestExecuteWorkflow:
         # Should not fail — default should be applied
         with patch("corp_by_os.workflow_engine._execute_python_step") as mock_exec:
             mock_exec.return_value = StepResult(
-                step_index=0, description="Step", success=True,
+                step_index=0,
+                description="Step",
+                success=True,
             )
             result = execute_workflow(wf, {})
             assert result.success is True
@@ -239,7 +241,10 @@ class TestExecuteWorkflow:
     @patch("corp_by_os.workflow_engine._execute_python_step")
     def test_stops_on_failure(self, mock_python, mock_agent, sample_workflow: Workflow) -> None:
         mock_agent.return_value = StepResult(
-            step_index=0, description="Agent", success=False, error="Agent failed",
+            step_index=0,
+            description="Agent",
+            success=False,
+            error="Agent failed",
         )
 
         result = execute_workflow(sample_workflow, {"name": "test"})
@@ -270,7 +275,9 @@ class TestAgentStep:
 
         mock_run.return_value = MagicMock(returncode=0, stdout="OK", stderr="")
         step = WorkflowStep(
-            type="agent", description="Test", agent="test",
+            type="agent",
+            description="Test",
+            agent="test",
             command=["test-cli", "do", "{name}"],
         )
         result = _execute_agent_step(step, {"name": "foo"})
@@ -284,7 +291,9 @@ class TestAgentStep:
 
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Error occurred")
         step = WorkflowStep(
-            type="agent", description="Test", agent="test",
+            type="agent",
+            description="Test",
+            agent="test",
             command=["test-cli", "do"],
         )
         result = _execute_agent_step(step, {})
@@ -297,7 +306,9 @@ class TestAgentStep:
 
         mock_run.side_effect = FileNotFoundError("not found")
         step = WorkflowStep(
-            type="agent", description="Test", agent="test",
+            type="agent",
+            description="Test",
+            agent="test",
             command=["nonexistent-cli"],
         )
         result = _execute_agent_step(step, {})
@@ -311,7 +322,9 @@ class TestAgentStep:
 
         mock_run.side_effect = sp.TimeoutExpired(cmd="test", timeout=300)
         step = WorkflowStep(
-            type="agent", description="Test", agent="test",
+            type="agent",
+            description="Test",
+            agent="test",
             command=["slow-cli"],
         )
         result = _execute_agent_step(step, {})
@@ -327,7 +340,8 @@ class TestPythonStep:
         from corp_by_os.workflow_engine import _execute_python_step
 
         step = WorkflowStep(
-            type="python", description="Test",
+            type="python",
+            description="Test",
             action="nonexistent_action",
         )
         result = _execute_python_step(step, {})
@@ -346,9 +360,14 @@ class TestPythonStep:
     def test_action_dispatched(self, mock_get) -> None:
         from corp_by_os.workflow_engine import _execute_python_step
 
-        mock_fn = MagicMock(return_value=StepResult(
-            step_index=0, description="Test", success=True, output="Done",
-        ))
+        mock_fn = MagicMock(
+            return_value=StepResult(
+                step_index=0,
+                description="Test",
+                success=True,
+                output="Done",
+            )
+        )
         mock_get.return_value = mock_fn
 
         step = WorkflowStep(type="python", description="Test", action="my_action")
@@ -374,7 +393,8 @@ class TestHelpers:
 
     def test_build_agent_command(self) -> None:
         step = WorkflowStep(
-            type="agent", description="Test",
+            type="agent",
+            description="Test",
             command=["cli", "run", "{name}"],
         )
         cmd = _build_agent_command(step, {"name": "foo"})
@@ -382,7 +402,8 @@ class TestHelpers:
 
     def test_build_agent_command_with_conditional(self) -> None:
         step = WorkflowStep(
-            type="agent", description="Test",
+            type="agent",
+            description="Test",
             command=["cli", "run"],
             conditional_args={"opt": ["--opt", "{opt}"]},
         )
@@ -391,7 +412,8 @@ class TestHelpers:
 
     def test_build_agent_command_conditional_missing(self) -> None:
         step = WorkflowStep(
-            type="agent", description="Test",
+            type="agent",
+            description="Test",
             command=["cli", "run"],
             conditional_args={"opt": ["--opt", "{opt}"]},
         )

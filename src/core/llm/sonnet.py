@@ -8,7 +8,7 @@ No routing, no sensitivity check. Uses Claude Sonnet 4 for all tasks.
 
 import json
 import logging
-from typing import Optional, Any
+from typing import Any
 
 import anthropic
 
@@ -24,7 +24,10 @@ class SonnetClient:
     Usage:
         client = SonnetClient()
         text = client.complete("Classify this file: invoice_2024.pdf")
-        data = client.complete_json("Return JSON with name and date", schema={"name": str, "date": str})
+        data = client.complete_json(
+            "Return JSON with name and date",
+            schema={"name": str, "date": str},
+        )
     """
 
     def __init__(self):
@@ -39,7 +42,7 @@ class SonnetClient:
     def complete(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.3,
     ) -> str:
@@ -58,7 +61,7 @@ class SonnetClient:
     def complete_json(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 4096,
     ) -> Any:
         """
@@ -67,9 +70,13 @@ class SonnetClient:
         Adds JSON instruction to system prompt automatically.
         Raises ValueError if response is not valid JSON.
         """
-        json_system = (system or "") + "\nRespond with valid JSON only. No markdown, no explanation."
+        json_system = (
+            system or ""
+        ) + "\nRespond with valid JSON only. No markdown, no explanation."
 
-        text = self.complete(prompt, system=json_system.strip(), max_tokens=max_tokens, temperature=0.0)
+        text = self.complete(
+            prompt, system=json_system.strip(), max_tokens=max_tokens, temperature=0.0
+        )
 
         # Strip markdown code fences if model adds them
         text = text.strip()
@@ -85,7 +92,7 @@ class SonnetClient:
 
 
 # Module-level singleton
-_client: Optional[SonnetClient] = None
+_client: SonnetClient | None = None
 
 
 def get_client() -> SonnetClient:

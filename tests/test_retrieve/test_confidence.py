@@ -111,8 +111,12 @@ class TestApplyConfidenceRanking:
     def test_highly_relevant_draft_beats_irrelevant_verified(self) -> None:
         """A very relevant draft can still outrank an irrelevant verified note."""
         notes = [
-            _make_note(note_id=1, title="Irrelevant Verified", confidence="verified", relevance_score=500.0),
-            _make_note(note_id=2, title="Relevant Draft", confidence="draft", relevance_score=-200.0),
+            _make_note(
+                note_id=1, title="Irrelevant Verified", confidence="verified", relevance_score=500.0
+            ),
+            _make_note(
+                note_id=2, title="Relevant Draft", confidence="draft", relevance_score=-200.0
+            ),
         ]
         ranked = _apply_confidence_ranking(notes)
         # Draft(-200 + 100 = -100) beats Verified(500 + 0 = 500)
@@ -121,8 +125,12 @@ class TestApplyConfidenceRanking:
     def test_same_confidence_preserves_relevance_order(self) -> None:
         """Notes with same confidence are sorted by BM25."""
         notes = [
-            _make_note(note_id=1, title="Less Relevant", confidence="extracted", relevance_score=10.0),
-            _make_note(note_id=2, title="More Relevant", confidence="extracted", relevance_score=-5.0),
+            _make_note(
+                note_id=1, title="Less Relevant", confidence="extracted", relevance_score=10.0
+            ),
+            _make_note(
+                note_id=2, title="More Relevant", confidence="extracted", relevance_score=-5.0
+            ),
         ]
         ranked = _apply_confidence_ranking(notes)
         assert ranked[0].title == "More Relevant"
@@ -150,9 +158,15 @@ class TestConfidenceInRetrieve:
                 topics, products, domains, note_path)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                "test", "", "Test Note", "notes", "doc",
-                json.dumps(["Platform"]), json.dumps(["Platform"]),
-                json.dumps(["General"]), str(note_file),
+                "test",
+                "",
+                "Test Note",
+                "notes",
+                "doc",
+                json.dumps(["Platform"]),
+                json.dumps(["Platform"]),
+                json.dumps(["General"]),
+                str(note_file),
             ),
         )
         conn.commit()
@@ -183,9 +197,16 @@ class TestConfidenceInRetrieve:
                 topics, products, domains, confidence, note_path)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                "test", "", "Verified Note", "notes", "doc",
-                json.dumps(["Security"]), json.dumps([]),
-                json.dumps(["General"]), "verified", str(note_file),
+                "test",
+                "",
+                "Verified Note",
+                "notes",
+                "doc",
+                json.dumps(["Security"]),
+                json.dumps([]),
+                json.dumps(["General"]),
+                "verified",
+                str(note_file),
             ),
         )
         conn.commit()

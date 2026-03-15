@@ -79,8 +79,11 @@ def _insert_note(
             topics, products, domains, note_path)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            "test_project", client, title,
-            "notes", source_type,
+            "test_project",
+            client,
+            title,
+            "notes",
+            source_type,
             json.dumps(topics or []),
             json.dumps(products or []),
             json.dumps(["General"]),
@@ -100,36 +103,48 @@ def rfp_db(tmp_path: Path) -> tuple[Path, Path]:
     conn.executescript(_TEST_SCHEMA)
 
     _insert_note(
-        conn, vault, "SaaS Architecture Overview",
+        conn,
+        vault,
+        "SaaS Architecture Overview",
         content="Blue Yonder Platform runs on multi-tenant SaaS architecture.",
         topics=["SaaS", "Architecture"],
         products=["Platform"],
     )
     _insert_note(
-        conn, vault, "Security Certifications",
+        conn,
+        vault,
+        "Security Certifications",
         content="Blue Yonder holds SOC2 Type II and ISO 27001.",
         topics=["Security", "Compliance"],
     )
     _insert_note(
-        conn, vault, "Demand Planning Features",
+        conn,
+        vault,
+        "Demand Planning Features",
         content="Cognitive Demand Planning uses ML for forecast accuracy.",
         topics=["Demand Planning", "ML"],
         products=["Cognitive Demand Planning"],
     )
     _insert_note(
-        conn, vault, "WMS Integration Guide",
+        conn,
+        vault,
+        "WMS Integration Guide",
         content="WMS integrates with SAP via standard IDocs and APIs.",
         topics=["WMS", "Integration"],
         products=["WMS"],
     )
     _insert_note(
-        conn, vault, "Platform Data Cloud",
+        conn,
+        vault,
+        "Platform Data Cloud",
         content="Snowflake-based data cloud for analytics and reporting.",
         topics=["Data", "Analytics"],
         products=["Platform"],
     )
     _insert_note(
-        conn, vault, "Lenzing Requirements",
+        conn,
+        vault,
+        "Lenzing Requirements",
         client="Lenzing",
         content="Lenzing needs demand planning with SAP APO migration.",
         topics=["Demand Planning"],
@@ -324,8 +339,10 @@ class TestLLMFailure:
         """LLM failure returns error message, doesn't crash."""
         db_path, vault = rfp_db
 
-        with patch("corp_by_os.retrieve.prep.genai") as mock_genai, \
-             patch("corp_by_os.retrieve.prep.genai_types") as mock_types:
+        with (
+            patch("corp_by_os.retrieve.prep.genai") as mock_genai,
+            patch("corp_by_os.retrieve.prep.genai_types") as mock_types,
+        ):
             mock_client = MagicMock()
             mock_client.models.generate_content.side_effect = RuntimeError("API down")
             mock_genai.Client.return_value = mock_client

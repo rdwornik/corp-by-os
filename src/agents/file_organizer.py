@@ -10,16 +10,14 @@ Uses:
 Naming convention: [TYPE]_[Description]_[YYYY-MM-DD]_[vNN].ext
 """
 
-import re
 import json
-import shutil
 import logging
-import subprocess
-from pathlib import Path
-from datetime import datetime
+import re
+import shutil
 from dataclasses import dataclass, field
-from typing import Optional, Literal
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 from config.settings import get_settings
 
@@ -28,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class FileType(Enum):
     """Supported file types for naming convention."""
+
     MEETING_NOTES = "MeetingNotes"
     RECORDING = "Recording"
     TRANSCRIPT = "Transcript"
@@ -42,6 +41,7 @@ class FileType(Enum):
 
 class DestinationFolder(Enum):
     """Target folders based on PROJECT_CONTEXT.md structure."""
+
     INBOX_RECORDINGS = "00_Inbox/recordings"
     INBOX_DOCUMENTS = "00_Inbox/documents"
     INBOX_EMAILS = "00_Inbox/emails"
@@ -54,11 +54,12 @@ class DestinationFolder(Enum):
 @dataclass
 class FileAnalysis:
     """Result of LLM content analysis."""
+
     summary: str
     file_type: FileType
     suggested_name: str
     destination: DestinationFolder
-    project_name: Optional[str]  # e.g., "Honda_PALOMA" if project-related
+    project_name: str | None  # e.g., "Honda_PALOMA" if project-related
     reasoning: str
     confidence: float
     content_preview: str = ""
@@ -67,6 +68,7 @@ class FileAnalysis:
 @dataclass
 class RenameProposal:
     """Proposed rename and move for a file."""
+
     original_path: Path
     new_name: str
     new_path: Path
@@ -85,6 +87,7 @@ class RenameProposal:
 @dataclass
 class ScanResult:
     """Result of folder scan."""
+
     folder: Path
     total_files: int
     already_compliant: int
@@ -99,7 +102,7 @@ class ScanResult:
 class ContentReader:
     """Reads content from various file formats."""
 
-    SUPPORTED_EXTENSIONS = {'.txt', '.md', '.docx', '.pdf'}
+    SUPPORTED_EXTENSIONS = {".txt", ".md", ".docx", ".pdf"}
     MAX_CONTENT_LENGTH = 8000  # Characters to send to LLM
 
     @classmethod
@@ -112,11 +115,11 @@ class ContentReader:
         ext = path.suffix.lower()
 
         try:
-            if ext in {'.txt', '.md'}:
+            if ext in {".txt", ".md"}:
                 return cls._read_text(path)
-            elif ext == '.docx':
+            elif ext == ".docx":
                 return cls._read_docx(path)
-            elif ext == '.pdf':
+            elif ext == ".pdf":
                 return cls._read_pdf(path)
         except Exception as e:
             logger.warning(f"Failed to read {path.name}: {e}")
@@ -126,11 +129,11 @@ class ContentReader:
     @classmethod
     def _read_text(cls, path: Path) -> str:
         """Read plain text file."""
-        encodings = ['utf-8', 'cp1250', 'cp1252', 'latin-1']
+        encodings = ["utf-8", "cp1250", "cp1252", "latin-1"]
         for enc in encodings:
             try:
                 content = path.read_text(encoding=enc)
-                return content[:cls.MAX_CONTENT_LENGTH]
+                return content[: cls.MAX_CONTENT_LENGTH]
             except UnicodeDecodeError:
                 continue
         return ""
@@ -140,10 +143,11 @@ class ContentReader:
         """Read Word document."""
         try:
             from docx import Document
+
             doc = Document(str(path))
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             content = "\n".join(paragraphs)
-            return content[:cls.MAX_CONTENT_LENGTH]
+            return content[: cls.MAX_CONTENT_LENGTH]
         except ImportError:
             logger.warning("python-docx not installed, skipping docx")
             return ""
@@ -153,12 +157,13 @@ class ContentReader:
         """Read PDF document."""
         try:
             import pypdf
+
             reader = pypdf.PdfReader(str(path))
             text_parts = []
             for page in reader.pages[:10]:  # First 10 pages
                 text_parts.append(page.extract_text() or "")
             content = "\n".join(text_parts)
-            return content[:cls.MAX_CONTENT_LENGTH]
+            return content[: cls.MAX_CONTENT_LENGTH]
         except ImportError:
             logger.warning("pypdf not installed, skipping pdf")
             return ""
@@ -172,25 +177,35 @@ class NamingConvention:
     """
 
     VALID_PATTERN = re.compile(
-        r'^([A-Z][a-zA-Z]+)'           # TYPE (PascalCase)
-        r'_([A-Z][a-zA-Z0-9_]+)'       # Description (PascalCase with _, allows digits)
-        r'_(\d{4}-\d{2}-\d{2})'        # Date (YYYY-MM-DD)
-        r'(?:_v(\d{2}))?'              # Version (optional)
-        r'\.([a-zA-Z0-9]+)$'           # Extension
+        r"^([A-Z][a-zA-Z]+)"  # TYPE (PascalCase)
+        r"_([A-Z][a-zA-Z0-9_]+)"  # Description (PascalCase with _, allows digits)
+        r"_(\d{4}-\d{2}-\d{2})"  # Date (YYYY-MM-DD)
+        r"(?:_v(\d{2}))?"  # Version (optional)
+        r"\.([a-zA-Z0-9]+)$"  # Extension
     )
 
     EXTENSION_MAP = {
-        '.mkv': FileType.RECORDING, '.mp4': FileType.RECORDING,
-        '.webm': FileType.RECORDING, '.m4a': FileType.RECORDING,
-        '.mp3': FileType.RECORDING, '.wav': FileType.RECORDING,
-        '.pptx': FileType.PRESENTATION, '.ppt': FileType.PRESENTATION,
-        '.docx': FileType.DOCUMENT, '.doc': FileType.DOCUMENT,
-        '.pdf': FileType.DOCUMENT, '.txt': FileType.DOCUMENT,
-        '.md': FileType.MEETING_NOTES,
-        '.drawio': FileType.DIAGRAM, '.vsdx': FileType.DIAGRAM,
-        '.png': FileType.SCREENSHOT, '.jpg': FileType.SCREENSHOT,
-        '.eml': FileType.EMAIL, '.msg': FileType.EMAIL,
-        '.xlsx': FileType.DOCUMENT, '.xls': FileType.DOCUMENT,
+        ".mkv": FileType.RECORDING,
+        ".mp4": FileType.RECORDING,
+        ".webm": FileType.RECORDING,
+        ".m4a": FileType.RECORDING,
+        ".mp3": FileType.RECORDING,
+        ".wav": FileType.RECORDING,
+        ".pptx": FileType.PRESENTATION,
+        ".ppt": FileType.PRESENTATION,
+        ".docx": FileType.DOCUMENT,
+        ".doc": FileType.DOCUMENT,
+        ".pdf": FileType.DOCUMENT,
+        ".txt": FileType.DOCUMENT,
+        ".md": FileType.MEETING_NOTES,
+        ".drawio": FileType.DIAGRAM,
+        ".vsdx": FileType.DIAGRAM,
+        ".png": FileType.SCREENSHOT,
+        ".jpg": FileType.SCREENSHOT,
+        ".eml": FileType.EMAIL,
+        ".msg": FileType.EMAIL,
+        ".xlsx": FileType.DOCUMENT,
+        ".xls": FileType.DOCUMENT,
     }
 
     @classmethod
@@ -202,11 +217,11 @@ class NamingConvention:
         """Extract date from filename or file metadata."""
         name = path.stem
         patterns = [
-            r'(\d{4}-\d{2}-\d{2})',
-            r'(\d{4}_\d{2}_\d{2})',
-            r'(\d{2}-\d{2}-\d{4})',
-            r'(\d{2}\.\d{2}\.\d{4})',
-            r'(\d{8})',
+            r"(\d{4}-\d{2}-\d{2})",
+            r"(\d{4}_\d{2}_\d{2})",
+            r"(\d{2}-\d{2}-\d{4})",
+            r"(\d{2}\.\d{2}\.\d{4})",
+            r"(\d{8})",
         ]
         for pattern in patterns:
             match = re.search(pattern, name)
@@ -215,18 +230,18 @@ class NamingConvention:
 
         try:
             mtime = path.stat().st_mtime
-            return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
+            return datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
         except Exception:
-            return datetime.now().strftime('%Y-%m-%d')
+            return datetime.now().strftime("%Y-%m-%d")
 
     @classmethod
     def _normalize_date(cls, date_str: str) -> str:
-        date_str = date_str.replace('_', '-').replace('.', '-')
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        date_str = date_str.replace("_", "-").replace(".", "-")
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
             return date_str
-        if re.match(r'^\d{8}$', date_str):
+        if re.match(r"^\d{8}$", date_str):
             return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-        parts = date_str.split('-')
+        parts = date_str.split("-")
         if len(parts) == 3 and len(parts[2]) == 4:
             if int(parts[0]) > 12:
                 return f"{parts[2]}-{parts[1]}-{parts[0]}"
@@ -234,8 +249,8 @@ class NamingConvention:
         return date_str
 
     @classmethod
-    def extract_version(cls, filename: str) -> Optional[str]:
-        match = re.search(r'[_\s]v(\d{1,2})', filename, re.I)
+    def extract_version(cls, filename: str) -> str | None:
+        match = re.search(r"[_\s]v(\d{1,2})", filename, re.I)
         if match:
             return f"v{int(match.group(1)):02d}"
         return None
@@ -247,23 +262,23 @@ class NamingConvention:
         description: str,
         date: str,
         extension: str,
-        version: Optional[str] = None
+        version: str | None = None,
     ) -> str:
         """Build compliant filename."""
         # Clean description
-        desc = re.sub(r'[^a-zA-Z0-9\s]', '', description)
+        desc = re.sub(r"[^a-zA-Z0-9\s]", "", description)
         words = desc.split()
         words = [w.capitalize() for w in words if w]
         if not words:
             words = ["Untitled"]
-        clean_desc = '_'.join(words[:5])  # Max 5 words
+        clean_desc = "_".join(words[:5])  # Max 5 words
 
         parts = [file_type.value, clean_desc, date]
         if version:
             parts.append(version)
 
-        if not extension.startswith('.'):
-            extension = f'.{extension}'
+        if not extension.startswith("."):
+            extension = f".{extension}"
 
         return f"{'_'.join(parts)}{extension}"
 
@@ -276,8 +291,8 @@ class OllamaClient:
 
     def generate(self, model: str, prompt: str, system: str = "") -> str:
         """Generate text using Ollama API."""
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         url = f"{self.base_url}/api/generate"
         data = {
@@ -285,18 +300,18 @@ class OllamaClient:
             "prompt": prompt,
             "system": system,
             "stream": False,
-            "options": {"temperature": 0.3}
+            "options": {"temperature": 0.3},
         }
 
         try:
             req = urllib.request.Request(
                 url,
-                data=json.dumps(data).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
+                data=json.dumps(data).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
             )
             with urllib.request.urlopen(req, timeout=120) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return result.get('response', '')
+                result = json.loads(response.read().decode("utf-8"))
+                return result.get("response", "")
         except urllib.error.URLError as e:
             logger.error(f"Ollama connection failed: {e}")
             raise
@@ -307,6 +322,7 @@ class OllamaClient:
     def is_available(self) -> bool:
         """Check if Ollama is running."""
         import urllib.request
+
         try:
             req = urllib.request.Request(f"{self.base_url}/api/tags")
             with urllib.request.urlopen(req, timeout=5):
@@ -354,32 +370,33 @@ Folder structure (from PROJECT_CONTEXT.md):
         return self._llm_available
 
     def scan(
-        self,
-        folder: Path,
-        recursive: bool = True,
-        extensions: Optional[list[str]] = None
+        self, folder: Path, recursive: bool = True, extensions: list[str] | None = None
     ) -> ScanResult:
         """Scan folder and generate organization proposals."""
         folder = Path(folder)
         if not folder.exists():
             return ScanResult(
-                folder=folder, total_files=0, already_compliant=0,
-                errors=[f"Folder does not exist: {folder}"]
+                folder=folder,
+                total_files=0,
+                already_compliant=0,
+                errors=[f"Folder does not exist: {folder}"],
             )
 
         if not self.llm_available:
             return ScanResult(
-                folder=folder, total_files=0, already_compliant=0,
-                errors=["Ollama not available. Start with: ollama serve"]
+                folder=folder,
+                total_files=0,
+                already_compliant=0,
+                errors=["Ollama not available. Start with: ollama serve"],
             )
 
         # Collect files
-        files = list(folder.rglob('*') if recursive else folder.glob('*'))
+        files = list(folder.rglob("*") if recursive else folder.glob("*"))
         files = [f for f in files if f.is_file()]
-        files = [f for f in files if not f.name.startswith(('.', '~'))]
+        files = [f for f in files if not f.name.startswith((".", "~"))]
 
         if extensions:
-            extensions = [e.lower() if e.startswith('.') else f'.{e.lower()}' for e in extensions]
+            extensions = [e.lower() if e.startswith(".") else f".{e.lower()}" for e in extensions]
             files = [f for f in files if f.suffix.lower() in extensions]
 
         result = ScanResult(folder=folder, total_files=len(files), already_compliant=0)
@@ -398,7 +415,7 @@ Folder structure (from PROJECT_CONTEXT.md):
 
         return result
 
-    def _analyze_and_propose(self, path: Path) -> Optional[RenameProposal]:
+    def _analyze_and_propose(self, path: Path) -> RenameProposal | None:
         """Analyze file with LLM and create proposal."""
         # Read content if possible
         content = ""
@@ -420,7 +437,7 @@ Folder structure (from PROJECT_CONTEXT.md):
             description=analysis.suggested_name,
             date=date,
             extension=path.suffix,
-            version=version
+            version=version,
         )
 
         # Determine destination path
@@ -436,7 +453,7 @@ Folder structure (from PROJECT_CONTEXT.md):
                 description=analysis.suggested_name,
                 date=date,
                 extension=path.suffix,
-                version=ver
+                version=ver,
             )
             new_path = dest_path / new_name
             counter += 1
@@ -450,7 +467,7 @@ Folder structure (from PROJECT_CONTEXT.md):
             summary=analysis.summary,
             reasoning=analysis.reasoning,
             confidence=analysis.confidence,
-            needs_review=analysis.confidence < 0.7
+            needs_review=analysis.confidence < 0.7,
         )
 
     def _understand_content(self, path: Path, content: str) -> str:
@@ -473,7 +490,7 @@ Focus on: topic, purpose, any company/project names mentioned."""
             response = self.ollama.generate(
                 model=self.settings.ollama_model_reader,
                 prompt=prompt,
-                system="You are a document analyst. Be concise and factual."
+                system="You are a document analyst. Be concise and factual.",
             )
             return response.strip()
         except Exception as e:
@@ -493,7 +510,8 @@ Understanding: {understanding}
 
 {self.FOLDER_STRUCTURE}
 
-File types: MeetingNotes, Recording, Transcript, Presentation, Document, RFP, Email, Screenshot, Diagram
+File types: MeetingNotes, Recording, Transcript, Presentation,
+Document, RFP, Email, Screenshot, Diagram
 
 Respond in this exact JSON format:
 {{
@@ -506,7 +524,9 @@ Respond in this exact JSON format:
 }}
 
 Rules:
-- If related to a specific company/opportunity, destination should be "10_Projects" and include project_name as "Company_Solution"
+- If related to a specific company/opportunity, destination
+should be "10_Projects" and include project_name as
+"Company_Solution"
 - Generic knowledge/reference material goes to "20_Knowledge"
 - New unprocessed files stay in appropriate 00_Inbox subfolder
 - suggested_name should be 2-4 words, PascalCase style (will be formatted later)
@@ -516,22 +536,22 @@ Rules:
             response = self.ollama.generate(
                 model=self.settings.ollama_model_reasoner,
                 prompt=prompt,
-                system="You are a file organization assistant. Respond only with valid JSON."
+                system="You are a file organization assistant. Respond only with valid JSON.",
             )
 
             # Extract JSON from response (handle markdown code blocks)
-            json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+            json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
 
                 file_type = FileType.UNKNOWN
                 for ft in FileType:
-                    if ft.value.lower() == data.get('file_type', '').lower():
+                    if ft.value.lower() == data.get("file_type", "").lower():
                         file_type = ft
                         break
 
                 dest = DestinationFolder.INBOX_DOCUMENTS
-                dest_str = data.get('destination', '')
+                dest_str = data.get("destination", "")
                 for d in DestinationFolder:
                     if d.value in dest_str or dest_str in d.value:
                         dest = d
@@ -540,11 +560,11 @@ Rules:
                 return FileAnalysis(
                     summary=understanding,
                     file_type=file_type if file_type != FileType.UNKNOWN else default_type,
-                    suggested_name=data.get('suggested_name', path.stem),
+                    suggested_name=data.get("suggested_name", path.stem),
                     destination=dest,
-                    project_name=data.get('project_name'),
-                    reasoning=data.get('reasoning', 'LLM categorization'),
-                    confidence=float(data.get('confidence', 0.6))
+                    project_name=data.get("project_name"),
+                    reasoning=data.get("reasoning", "LLM categorization"),
+                    confidence=float(data.get("confidence", 0.6)),
                 )
 
         except Exception as e:
@@ -558,7 +578,7 @@ Rules:
             destination=DestinationFolder.INBOX_DOCUMENTS,
             project_name=None,
             reasoning="Fallback: LLM categorization failed",
-            confidence=0.3
+            confidence=0.3,
         )
 
     def _resolve_destination(self, analysis: FileAnalysis) -> Path:
@@ -616,35 +636,34 @@ Rules:
         result: ScanResult,
         dry_run: bool = True,
         skip_low_confidence: bool = True,
-        min_confidence: float = 0.5
+        min_confidence: float = 0.5,
     ) -> dict:
         """
         Apply organization proposals.
 
         ALWAYS use dry_run=True first to preview changes!
         """
-        summary = {
-            'moved': [],
-            'skipped': [],
-            'failed': [],
-            'dry_run': dry_run
-        }
+        summary = {"moved": [], "skipped": [], "failed": [], "dry_run": dry_run}
 
         for proposal in result.proposals:
             # Skip low confidence
             if skip_low_confidence and proposal.confidence < min_confidence:
-                summary['skipped'].append({
-                    'file': proposal.original_name,
-                    'reason': f'Low confidence ({proposal.confidence:.0%})'
-                })
+                summary["skipped"].append(
+                    {
+                        "file": proposal.original_name,
+                        "reason": f"Low confidence ({proposal.confidence:.0%})",
+                    }
+                )
                 continue
 
             if dry_run:
-                summary['moved'].append({
-                    'from': str(proposal.original_path),
-                    'to': str(proposal.new_path),
-                    'action': 'WOULD MOVE'
-                })
+                summary["moved"].append(
+                    {
+                        "from": str(proposal.original_path),
+                        "to": str(proposal.new_path),
+                        "action": "WOULD MOVE",
+                    }
+                )
             else:
                 try:
                     # Ensure destination exists
@@ -653,23 +672,22 @@ Rules:
                     # Move file
                     shutil.move(str(proposal.original_path), str(proposal.new_path))
 
-                    summary['moved'].append({
-                        'from': str(proposal.original_path),
-                        'to': str(proposal.new_path),
-                        'action': 'MOVED'
-                    })
+                    summary["moved"].append(
+                        {
+                            "from": str(proposal.original_path),
+                            "to": str(proposal.new_path),
+                            "action": "MOVED",
+                        }
+                    )
                     logger.info(f"Moved: {proposal.original_name} -> {proposal.new_path}")
                 except Exception as e:
-                    summary['failed'].append({
-                        'file': proposal.original_name,
-                        'error': str(e)
-                    })
+                    summary["failed"].append({"file": proposal.original_name, "error": str(e)})
 
         return summary
 
     def apply_summary(self, summary: dict) -> str:
         """Generate summary of apply operation."""
-        mode = "DRY RUN" if summary['dry_run'] else "APPLIED"
+        mode = "DRY RUN" if summary["dry_run"] else "APPLIED"
         lines = [
             "=" * 60,
             f"FILE ORGANIZER - {mode}",
@@ -680,25 +698,25 @@ Rules:
             "",
         ]
 
-        if summary['moved']:
+        if summary["moved"]:
             lines.append("CHANGES:")
-            for item in summary['moved'][:10]:
+            for item in summary["moved"][:10]:
                 lines.append(f"  {item['action']}: {Path(item['from']).name}")
                 lines.append(f"    -> {item['to']}")
-            if len(summary['moved']) > 10:
+            if len(summary["moved"]) > 10:
                 lines.append(f"  ... and {len(summary['moved']) - 10} more")
 
-        if summary['skipped']:
+        if summary["skipped"]:
             lines.append("\nSKIPPED:")
-            for item in summary['skipped'][:5]:
+            for item in summary["skipped"][:5]:
                 lines.append(f"  {item['file']}: {item['reason']}")
 
-        if summary['failed']:
+        if summary["failed"]:
             lines.append("\nFAILED:")
-            for item in summary['failed']:
+            for item in summary["failed"]:
                 lines.append(f"  {item['file']}: {item['error']}")
 
-        if summary['dry_run']:
+        if summary["dry_run"]:
             lines.append("\n" + "=" * 60)
             lines.append("This was a DRY RUN. No files were moved.")
             lines.append("To apply changes, run with dry_run=False")
@@ -717,11 +735,11 @@ def scan_inbox() -> ScanResult:
 if __name__ == "__main__":
     import sys
 
-    apply_flag = '--apply' in sys.argv
+    apply_flag = "--apply" in sys.argv
 
     folder = None
     for arg in sys.argv[1:]:
-        if not arg.startswith('--'):
+        if not arg.startswith("--"):
             folder = Path(arg)
             break
 
@@ -729,7 +747,7 @@ if __name__ == "__main__":
         folder = get_settings().inbox_path
 
     print(f"Scanning: {folder}")
-    print(f"Using models: qwen2.5:7b (reader), deepseek-r1:1.5b (reasoner)")
+    print("Using models: qwen2.5:7b (reader), deepseek-r1:1.5b (reasoner)")
     print()
 
     organizer = FileOrganizer()

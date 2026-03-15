@@ -7,7 +7,7 @@ PromptLogger    — appends every AI call to logs/prompt_history.jsonl.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,13 +44,13 @@ class PromptTemplate:
     """
 
     def __init__(self, data: dict):
-        self.name: str        = data["name"]
-        self.version: str     = str(data["version"])
+        self.name: str = data["name"]
+        self.version: str = str(data["version"])
         self.description: str = data.get("description", "")
-        self.model: str       = data.get("model", "claude-sonnet-4-20250514")
-        self.max_tokens: int  = int(data.get("max_tokens", 4096))
-        self.template: str    = data["template"]
-        self.variables: list  = data.get("variables", [])
+        self.model: str = data.get("model", "claude-sonnet-4-20250514")
+        self.max_tokens: int = int(data.get("max_tokens", 4096))
+        self.template: str = data["template"]
+        self.variables: list = data.get("variables", [])
 
     @classmethod
     def load(cls, name: str) -> "PromptTemplate":
@@ -110,23 +110,27 @@ class PromptLogger:
         error: str | None = None,
     ) -> None:
         entry = {
-            "timestamp":      datetime.now(timezone.utc).isoformat(),
-            "prompt_name":    prompt_name,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "prompt_name": prompt_name,
             "prompt_version": prompt_version,
-            "model":          model,
-            "provider":       provider,
-            "batch_num":      batch_num,
-            "batch_size":     batch_size,
-            "input_tokens":   len(rendered_prompt) // 4,
-            "output_tokens":  len(raw_output) // 4,
-            "input_preview":  rendered_prompt[:300].replace("\n", " "),
+            "model": model,
+            "provider": provider,
+            "batch_num": batch_num,
+            "batch_size": batch_size,
+            "input_tokens": len(rendered_prompt) // 4,
+            "output_tokens": len(raw_output) // 4,
+            "input_preview": rendered_prompt[:300].replace("\n", " "),
             "output_preview": raw_output[:300].replace("\n", " "),
-            "error":          error,
+            "error": error,
         }
         with self.log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         logger.debug(
             "prompt logged: %s v%s  batch=%d/%d  in~%d  out~%d tokens",
-            prompt_name, prompt_version, batch_num, batch_size,
-            entry["input_tokens"], entry["output_tokens"],
+            prompt_name,
+            prompt_version,
+            batch_num,
+            batch_size,
+            entry["input_tokens"],
+            entry["output_tokens"],
         )

@@ -60,12 +60,20 @@ class TestAssets:
     def test_upsert_asset_existing(self, db: OpsDB) -> None:
         """Existing asset (same path) is updated, not duplicated."""
         db.upsert_asset(
-            "test/file.txt", "file.txt", ".txt", 100,
-            "2026-03-14T10:00:00", "10_Projects",
+            "test/file.txt",
+            "file.txt",
+            ".txt",
+            100,
+            "2026-03-14T10:00:00",
+            "10_Projects",
         )
         db.upsert_asset(
-            "test/file.txt", "file.txt", ".txt", 200,
-            "2026-03-14T11:00:00", "10_Projects",
+            "test/file.txt",
+            "file.txt",
+            ".txt",
+            200,
+            "2026-03-14T11:00:00",
+            "10_Projects",
         )
         asset = db.get_asset("test/file.txt")
         assert asset is not None
@@ -89,10 +97,12 @@ class TestAssets:
 
     def test_get_assets_by_folder(self, db: OpsDB) -> None:
         """Filter assets by L1 folder."""
-        db.upsert_asset("10_Projects/a.pdf", "a.pdf", ".pdf", 10,
-                        "2026-01-01T00:00:00", "10_Projects")
-        db.upsert_asset("30_Templates/b.pptx", "b.pptx", ".pptx", 20,
-                        "2026-01-01T00:00:00", "30_Templates")
+        db.upsert_asset(
+            "10_Projects/a.pdf", "a.pdf", ".pdf", 10, "2026-01-01T00:00:00", "10_Projects"
+        )
+        db.upsert_asset(
+            "30_Templates/b.pptx", "b.pptx", ".pptx", 20, "2026-01-01T00:00:00", "30_Templates"
+        )
         projects = db.get_assets_by_folder("10_Projects")
         assert len(projects) == 1
         assert projects[0]["filename"] == "a.pdf"
@@ -101,10 +111,10 @@ class TestAssets:
 class TestStatusChangeLogsEvent:
     def test_asset_status_change_logs_event(self, db: OpsDB) -> None:
         """Changing asset status always creates an ingest_event."""
-        db.upsert_asset("x.pptx", "x.pptx", ".pptx", 100,
-                        "2026-01-01T00:00:00", "30_Templates")
+        db.upsert_asset("x.pptx", "x.pptx", ".pptx", 100, "2026-01-01T00:00:00", "30_Templates")
         db.update_asset_status(
-            "x.pptx", "routed",
+            "x.pptx",
+            "routed",
             routed_to="60_Source_Library/01_Product_Docs",
             routed_method="heuristic",
             routed_confidence=0.9,
@@ -135,8 +145,7 @@ class TestUpdateAssetPath:
         subsequent lookups by new path succeed."""
         old = "00_Inbox/report.pdf"
         new = "60_Source_Library/01_Product_Docs/report.pdf"
-        db.upsert_asset(old, "report.pdf", ".pdf", 100,
-                        "2026-01-01T00:00:00", "00_Inbox")
+        db.upsert_asset(old, "report.pdf", ".pdf", 100, "2026-01-01T00:00:00", "00_Inbox")
 
         ok = db.update_asset_path(old, new)
         assert ok is True
@@ -152,13 +161,14 @@ class TestUpdateAssetPath:
         """Regression: update_asset_status works after path is updated."""
         old = "00_Inbox/deck.pptx"
         new = "60_Source_Library/02_Training/deck.pptx"
-        db.upsert_asset(old, "deck.pptx", ".pptx", 500,
-                        "2026-01-01T00:00:00", "00_Inbox")
+        db.upsert_asset(old, "deck.pptx", ".pptx", 500, "2026-01-01T00:00:00", "00_Inbox")
 
         db.update_asset_path(old, new)
         db.update_asset_status(
-            new, "routed",
-            routed_to=new, routed_method="series",
+            new,
+            "routed",
+            routed_to=new,
+            routed_method="series",
             routed_confidence=0.95,
         )
 
@@ -173,10 +183,12 @@ class TestUpdateAssetPath:
 
     def test_update_path_normalizes_backslashes(self, db: OpsDB) -> None:
         """Backslashes in paths are normalized to forward slashes."""
-        db.upsert_asset("00_Inbox/file.txt", "file.txt", ".txt", 10,
-                        "2026-01-01T00:00:00", "00_Inbox")
+        db.upsert_asset(
+            "00_Inbox/file.txt", "file.txt", ".txt", 10, "2026-01-01T00:00:00", "00_Inbox"
+        )
         ok = db.update_asset_path(
-            "00_Inbox\\file.txt", "10_Projects\\file.txt",
+            "00_Inbox\\file.txt",
+            "10_Projects\\file.txt",
         )
         assert ok is True
         assert db.get_asset("10_Projects/file.txt") is not None
@@ -264,8 +276,11 @@ class TestForwardSlashPaths:
         """All paths stored with forward slashes, even on Windows."""
         db.upsert_asset(
             r"10_Projects\Lenzing\file.pdf",  # Windows-style input
-            "file.pdf", ".pdf", 100,
-            "2026-01-01T00:00:00", "10_Projects",
+            "file.pdf",
+            ".pdf",
+            100,
+            "2026-01-01T00:00:00",
+            "10_Projects",
         )
         asset = db.get_asset("10_Projects/Lenzing/file.pdf")
         assert asset is not None
@@ -273,8 +288,7 @@ class TestForwardSlashPaths:
 
     def test_backslash_lookup(self, db: OpsDB) -> None:
         """Lookup with backslashes still finds the forward-slash asset."""
-        db.upsert_asset("a/b/c.txt", "c.txt", ".txt", 10,
-                        "2026-01-01T00:00:00", "a")
+        db.upsert_asset("a/b/c.txt", "c.txt", ".txt", 10, "2026-01-01T00:00:00", "a")
         # Look up with backslashes
         asset = db.get_asset(r"a\b\c.txt")
         assert asset is not None
@@ -308,7 +322,8 @@ class TestIngestEvents:
     def test_log_event_standalone(self, db: OpsDB) -> None:
         """Events can be logged without an asset."""
         eid = db.log_event(
-            "scanned", method="overnight",
+            "scanned",
+            method="overnight",
             reasoning="Full MyWork scan",
         )
         assert isinstance(eid, int)

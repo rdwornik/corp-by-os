@@ -34,7 +34,8 @@ def tmp_vault(tmp_path: Path) -> Path:
         "last_extracted": "2026-03-06",
     }
     (proj_dir / "project-info.yaml").write_text(
-        yaml.dump(info, default_flow_style=False), encoding="utf-8",
+        yaml.dump(info, default_flow_style=False),
+        encoding="utf-8",
     )
 
     # Create a sample note with frontmatter
@@ -71,9 +72,12 @@ def tmp_projects(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def app_config(tmp_vault: Path, tmp_projects: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def app_config(
+    tmp_vault: Path, tmp_projects: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Set up AppConfig pointing to temp directories."""
     monkeypatch.setenv("VAULT_PATH", str(tmp_vault))
+    monkeypatch.setenv("MYWORK_ROOT", str(tmp_path / "mywork"))
     monkeypatch.setenv("PROJECTS_ROOT", str(tmp_projects))
     monkeypatch.setenv("TEMPLATES_ROOT", str(tmp_path / "templates"))
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path / "archive"))

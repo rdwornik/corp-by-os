@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from itertools import combinations
 from pathlib import Path
 
-from corp_by_os.index_builder import _connect, _ensure_schema, get_index_path
+from corp_by_os.index_builder import _connect, _ensure_schema
 from corp_by_os.models import AnalyticsReport, FactResult, ProjectResult
 
 logger = logging.getLogger(__name__)
@@ -75,14 +75,26 @@ def search_facts(
         results = []
         for row in rows:
             topics = _parse_json_list(row[4])
-            results.append(FactResult(
-                project_id=row[0],
-                client=row[1],
-                fact=row[2],
-                source_title=row[3] or "",
-                topics=topics,
-                relevance_score=abs(row[5]) if row[5] else 0.0,
-            ))
+            results.append(
+                FactResult(
+                    project_id=row[0],
+                    client=row[1],
+                    fact=row[2],
+                    source_title=row[3] or "",
+                    topics=topics,
+                    relevance_score=abs(row[5]) if row[5] else 0.0,
+                )
+            )
+
+        # Also search notes_fts for matching vault notes
+        remaining = limit - len(results)
+        if remaining > 0:
+            try:
+                notes_results = _search_notes_fts(conn, fts_query, project_filter, remaining)
+                results.extend(notes_results)
+            except Exception:
+                # notes table may not exist in older indexes
+                logger.debug("notes_fts search skipped (table may not exist)")
 
         return results
     finally:
@@ -101,7 +113,10 @@ def search_projects(
     try:
         _ensure_schema(conn)
 
-        sql = "SELECT project_id, client, status, products, topics, facts_count FROM projects WHERE 1=1"
+        sql = (
+            "SELECT project_id, client, status, products,"
+            " topics, facts_count FROM projects WHERE 1=1"
+        )
         params: list = []
 
         if status:
@@ -128,20 +143,19 @@ def search_projects(
             # Filter by topics (any match, substring)
             if topics:
                 topics_lower = [t.lower() for t in proj_topics]
-                if not any(
-                    any(t.lower() in pt for pt in topics_lower)
-                    for t in topics
-                ):
+                if not any(any(t.lower() in pt for pt in topics_lower) for t in topics):
                     continue
 
-            results.append(ProjectResult(
-                project_id=row[0],
-                client=row[1],
-                status=row[2] or "",
-                products=proj_products,
-                topics=proj_topics,
-                facts_count=row[5] or 0,
-            ))
+            results.append(
+                ProjectResult(
+                    project_id=row[0],
+                    client=row[1],
+                    status=row[2] or "",
+                    products=proj_products,
+                    topics=proj_topics,
+                    facts_count=row[5] or 0,
+                )
+            )
 
         return results
     finally:
@@ -193,9 +207,7 @@ def get_analytics(db_path: Path | None = None) -> AnalyticsReport:
             for pair in combinations(unique, 2):
                 bundle_counter[f"{pair[0]} + {pair[1]}"] += 1
         product_bundles = [
-            (bundle, count)
-            for bundle, count in bundle_counter.most_common(10)
-            if count >= 2
+            (bundle, count) for bundle, count in bundle_counter.most_common(10) if count >= 2
         ]
 
         # Projects by status
@@ -219,7 +231,9 @@ def get_analytics(db_path: Path | None = None) -> AnalyticsReport:
         # Stale projects (last_extracted > 30 days ago)
         cutoff = (date.today() - timedelta(days=30)).isoformat()
         stale_rows = conn.execute(
-            "SELECT project_id FROM projects WHERE last_extracted IS NOT NULL AND last_extracted < ?",
+            "SELECT project_id FROM projects"
+            " WHERE last_extracted IS NOT NULL"
+            " AND last_extracted < ?",
             (cutoff,),
         ).fetchall()
         stale_projects = [r[0] for r in stale_rows]
@@ -241,6 +255,49 @@ def get_analytics(db_path: Path | None = None) -> AnalyticsReport:
 
 
 # --- Helpers ---
+
+
+def _search_notes_fts(
+    conn: sqlite3.Connection,
+    fts_query: str,
+    project_filter: str | None,
+    limit: int,
+) -> list[FactResult]:
+    """Search notes_fts and return results as FactResult for unified display."""
+    if project_filter:
+        sql = """
+            SELECT n.project_id, n.client, n.title, n.products, n.topics, rank
+            FROM notes_fts nf
+            JOIN notes n ON n.id = nf.rowid
+            WHERE notes_fts MATCH ? AND n.project_id = ?
+            ORDER BY rank
+            LIMIT ?
+        """
+        rows = conn.execute(sql, (fts_query, project_filter.lower(), limit)).fetchall()
+    else:
+        sql = """
+            SELECT n.project_id, n.client, n.title, n.products, n.topics, rank
+            FROM notes_fts nf
+            JOIN notes n ON n.id = nf.rowid
+            WHERE notes_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """
+        rows = conn.execute(sql, (fts_query, limit)).fetchall()
+
+    results = []
+    for row in rows:
+        results.append(
+            FactResult(
+                project_id=row[0],
+                client=row[1] or "",
+                fact=f"[note] {row[2]}",
+                source_title=row[3] or "",
+                topics=row[4].split(", ") if row[4] else [],
+                relevance_score=abs(row[5]) if row[5] else 0.0,
+            )
+        )
+    return results
 
 
 def _sanitize_fts_query(query: str) -> str:

@@ -149,18 +149,21 @@ class TestRuleMatch:
     def test_folder_hint_match(self, registry: ContentRegistry) -> None:
         """Product doc rule matches when folder_hint present."""
         result = registry.match_file(
-            "Platform_Architecture.pdf", ".pdf",
+            "Platform_Architecture.pdf",
+            ".pdf",
             folder_context="01_Product_Docs/Platform",
         )
         assert result.matched is True
         assert result.rule_name == "Product documentation"
 
     def test_folder_hint_no_match_still_matches_lower_confidence(
-        self, registry: ContentRegistry,
+        self,
+        registry: ContentRegistry,
     ) -> None:
         """Product doc rule matches even without folder_hint, at lower confidence."""
         result = registry.match_file(
-            "Platform_Architecture.pdf", ".pdf",
+            "Platform_Architecture.pdf",
+            ".pdf",
             folder_context="random_folder",
         )
         assert result.matched is True
@@ -170,7 +173,8 @@ class TestRuleMatch:
     def test_folder_hint_boosts_confidence(self, registry: ContentRegistry) -> None:
         """Product doc rule has higher confidence when folder_hint matches."""
         result = registry.match_file(
-            "Platform_Architecture.pdf", ".pdf",
+            "Platform_Architecture.pdf",
+            ".pdf",
             folder_context="01_Product_Docs/Platform",
         )
         assert result.matched is True
@@ -183,7 +187,8 @@ class TestRuleMatch:
         data = yaml.safe_load(registry.registry_path.read_text(encoding="utf-8"))
         data["destination_rules"][2]["match"]["extensions"].append(".docx")
         registry.registry_path.write_text(
-            yaml.dump(data, default_flow_style=False), encoding="utf-8",
+            yaml.dump(data, default_flow_style=False),
+            encoding="utf-8",
         )
         registry.reload()
 

@@ -1,3 +1,3 @@
-from .prompt_loader import PromptTemplate, PromptLogger
+from .prompt_loader import PromptLogger, PromptTemplate
 
 __all__ = ["PromptTemplate", "PromptLogger"]

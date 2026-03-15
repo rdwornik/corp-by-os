@@ -34,11 +34,23 @@ _TYPE_BY_EXT = {
 # Auto-tag mappings: if filename contains key, add tags + use_cases
 _AUTO_TAGS: list[tuple[str, list[str], list[str]]] = [
     # (keyword in filename, tags, use_cases)
-    ("corporate", ["corporate", "overview"], ["corporate overview", "executive briefing", "first meeting"]),
-    ("discovery", ["discovery", "questions"], ["discovery call preparation", "qualification"]),
+    (
+        "corporate",
+        ["corporate", "overview"],
+        ["corporate overview", "executive briefing", "first meeting"],
+    ),
+    (
+        "discovery",
+        ["discovery", "questions"],
+        ["discovery call preparation", "qualification"],
+    ),
     ("customer", ["discovery"], ["discovery call preparation"]),
     ("pitch", ["pitch", "overview"], ["first meeting", "executive briefing"]),
-    ("platform", ["platform", "architecture", "technical"], ["architecture overview", "technical deep dive"]),
+    (
+        "platform",
+        ["platform", "architecture", "technical"],
+        ["architecture overview", "technical deep dive"],
+    ),
     ("architecture", ["architecture", "technical"], ["architecture overview", "integration"]),
     ("integration", ["integration", "technical"], ["integration", "architecture overview"]),
     ("analytics", ["analytics", "platform"], ["analytics", "platform overview"]),
@@ -86,7 +98,17 @@ def _infer_metadata(filepath: Path, templates_root: Path) -> tuple[list[str], li
     # Domain inference
     if any(t in tags for t in ["demo", "api", "data", "ingestion"]):
         domains.append("Technical")
-    if any(t in tags for t in ["corporate", "pitch", "overview", "value", "discovery", "questions"]):
+    if any(
+        t in tags
+        for t in [
+            "corporate",
+            "pitch",
+            "overview",
+            "value",
+            "discovery",
+            "questions",
+        ]
+    ):
         domains.append("Go-to-Market")
     if any(t in tags for t in ["platform", "architecture", "integration"]):
         domains.extend(["Product", "Technical"])
@@ -162,18 +184,20 @@ def scan_templates(templates_root: Path | None = None) -> list[TemplateInfo]:
         size_mb = round(filepath.stat().st_size / (1024 * 1024), 3)
         rel_path = f"30_Templates/{rel.as_posix()}"
 
-        templates.append(TemplateInfo(
-            id=_make_id(filepath.name),
-            name=filepath.stem.replace("_", " "),
-            file=filepath.name,
-            path=rel_path,
-            size_mb=size_mb,
-            type=tpl_type,
-            use_cases=use_cases,
-            domains=domains,
-            tags=tags,
-            language="en",
-        ))
+        templates.append(
+            TemplateInfo(
+                id=_make_id(filepath.name),
+                name=filepath.stem.replace("_", " "),
+                file=filepath.name,
+                path=rel_path,
+                size_mb=size_mb,
+                type=tpl_type,
+                use_cases=use_cases,
+                domains=domains,
+                tags=tags,
+                language="en",
+            )
+        )
 
     return templates
 
@@ -198,18 +222,20 @@ def load_registry(registry_path: Path | None = None) -> list[TemplateInfo]:
 
     templates: list[TemplateInfo] = []
     for item in data["templates"]:
-        templates.append(TemplateInfo(
-            id=item["id"],
-            name=item.get("name", ""),
-            file=item.get("file", ""),
-            path=item.get("path", ""),
-            size_mb=float(item.get("size_mb", 0)),
-            type=item.get("type", "document"),
-            use_cases=item.get("use_cases", []),
-            domains=item.get("domains", []),
-            tags=item.get("tags", []),
-            language=item.get("language", "en"),
-        ))
+        templates.append(
+            TemplateInfo(
+                id=item["id"],
+                name=item.get("name", ""),
+                file=item.get("file", ""),
+                path=item.get("path", ""),
+                size_mb=float(item.get("size_mb", 0)),
+                type=item.get("type", "document"),
+                use_cases=item.get("use_cases", []),
+                domains=item.get("domains", []),
+                tags=item.get("tags", []),
+                language=item.get("language", "en"),
+            )
+        )
 
     return templates
 

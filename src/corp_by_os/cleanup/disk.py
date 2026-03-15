@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -112,18 +111,21 @@ def find_onedrive_overlap(
             # Verify local copy is real (not a cloud placeholder)
             local_path = local_files[key]
             if _is_real_file(local_path):
-                plan.add(CleanupItem(
-                    path=str(f),
-                    filename=f.name,
-                    size_bytes=size,
-                    category="overlap",
-                    reason="Exists in local MyWork (same name + size)",
-                    keep_path=str(local_path),
-                ))
+                plan.add(
+                    CleanupItem(
+                        path=str(f),
+                        filename=f.name,
+                        size_bytes=size,
+                        category="overlap",
+                        reason="Exists in local MyWork (same name + size)",
+                        keep_path=str(local_path),
+                    )
+                )
 
     logger.info(
         "OneDrive overlap: %d files, %.1f MB",
-        plan.total_files, plan.total_mb,
+        plan.total_files,
+        plan.total_mb,
     )
     return plan
 
@@ -186,18 +188,21 @@ def find_duplicates(scan_root: Path) -> CleanupPlan:
         keep = paths[0]
 
         for dup in paths[1:]:
-            plan.add(CleanupItem(
-                path=str(dup),
-                filename=filename,
-                size_bytes=size,
-                category="duplicate",
-                reason=f"Duplicate of {keep.name} (same name + size)",
-                keep_path=str(keep),
-            ))
+            plan.add(
+                CleanupItem(
+                    path=str(dup),
+                    filename=filename,
+                    size_bytes=size,
+                    category="duplicate",
+                    reason=f"Duplicate of {keep.name} (same name + size)",
+                    keep_path=str(keep),
+                )
+            )
 
     logger.info(
         "Duplicates: %d files, %.1f MB",
-        plan.total_files, plan.total_mb,
+        plan.total_files,
+        plan.total_mb,
     )
     return plan
 
@@ -226,17 +231,20 @@ def find_extraction_artifacts(mywork_root: Path) -> CleanupPlan:
         except OSError:
             continue
 
-        plan.add(CleanupItem(
-            path=str(f),
-            filename=f.name,
-            size_bytes=size,
-            category="artifact",
-            reason="CKE extraction run artifact (originals in MyWork)",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(f),
+                filename=f.name,
+                size_bytes=size,
+                category="artifact",
+                reason="CKE extraction run artifact (originals in MyWork)",
+            )
+        )
 
     logger.info(
         "Extraction artifacts: %d files, %.1f MB",
-        plan.total_files, plan.total_mb,
+        plan.total_files,
+        plan.total_mb,
     )
     return plan
 
@@ -260,17 +268,20 @@ def find_staging_artifacts(app_data_path: Path) -> CleanupPlan:
         except OSError:
             continue
 
-        plan.add(CleanupItem(
-            path=str(f),
-            filename=f.name,
-            size_bytes=size,
-            category="artifact",
-            reason="Stale staging artifact from ingest/extraction",
-        ))
+        plan.add(
+            CleanupItem(
+                path=str(f),
+                filename=f.name,
+                size_bytes=size,
+                category="artifact",
+                reason="Stale staging artifact from ingest/extraction",
+            )
+        )
 
     logger.info(
         "Staging artifacts: %d files, %.1f MB",
-        plan.total_files, plan.total_mb,
+        plan.total_files,
+        plan.total_mb,
     )
     return plan
 
@@ -296,8 +307,9 @@ def execute_plan(
         target = Path(item.path)
 
         if dry_run:
-            logger.info("[DRY RUN] Would delete: %s (%.1f MB)",
-                        item.filename, item.size_bytes / 1024 / 1024)
+            logger.info(
+                "[DRY RUN] Would delete: %s (%.1f MB)", item.filename, item.size_bytes / 1024 / 1024
+            )
             continue
 
         if not target.exists():
@@ -309,8 +321,7 @@ def execute_plan(
             target.unlink()
             deleted += 1
             _log_deletion(log_path, item)
-            logger.info("Deleted: %s (%.1f MB)",
-                        item.filename, item.size_bytes / 1024 / 1024)
+            logger.info("Deleted: %s (%.1f MB)", item.filename, item.size_bytes / 1024 / 1024)
         except OSError as exc:
             logger.error("Failed to delete %s: %s", item.path, exc)
             failed += 1

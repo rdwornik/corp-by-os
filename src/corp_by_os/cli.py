@@ -49,13 +49,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Use ASCII-safe markers for Windows legacy console compatibility
-CHECK = "Y"
-DASH = "-"
-
 from corp_by_os.config import get_config
 from corp_by_os.project_resolver import resolve_project
 from corp_by_os.vault_io import list_projects, read_project_info, validate_vault
+
+# Use ASCII-safe markers for Windows legacy console compatibility
+CHECK = "Y"
+DASH = "-"
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -149,7 +149,9 @@ def project_show(name: str) -> None:
 
         console.print(table)
     else:
-        console.print(f"[yellow]No project-info.yaml found in vault for {resolved.folder_name}[/yellow]")
+        console.print(
+            f"[yellow]No project-info.yaml found in vault for {resolved.folder_name}[/yellow]"
+        )
 
     console.print()
     if resolved.onedrive_path:
@@ -202,7 +204,9 @@ def vault_validate(project: str | None) -> None:
     report = validate_vault(project_id=project_id)
 
     if report.is_valid and not report.issues:
-        console.print(f"[green]OK[/green] -- {report.notes_checked} notes checked, {report.notes_valid} valid")
+        console.print(
+            f"[green]OK[/green] -- {report.notes_checked} notes checked, {report.notes_valid} valid"
+        )
         return
 
     # Show issues
@@ -220,7 +224,10 @@ def vault_validate(project: str | None) -> None:
         )
 
     console.print(table)
-    console.print(f"\n[dim]{report.notes_checked} notes checked, {report.notes_valid} valid, {len(report.issues)} issues[/dim]")
+    console.print(
+        f"\n[dim]{report.notes_checked} notes checked, "
+        f"{report.notes_valid} valid, {len(report.issues)} issues[/dim]"
+    )
 
 
 # --- Doctor ---
@@ -298,7 +305,9 @@ def doctor() -> None:
         issue_table.add_column("Fix", max_width=40, style="dim")
 
         sev_styles = {
-            "error": "red bold", "warning": "yellow", "info": "dim",
+            "error": "red bold",
+            "warning": "yellow",
+            "info": "dim",
         }
         for issue in integrity.issues:
             sev_style = sev_styles.get(issue.severity, "")
@@ -395,7 +404,10 @@ def run_workflow(
     for step in result.steps:
         status = "[green]OK[/green]" if step.success else "[red]FAIL[/red]"
         duration = f"({step.duration_seconds:.1f}s)" if step.duration_seconds > 0 else ""
-        console.print(f"  Step {step.step_index + 1}/{len(wf.steps)}: {step.description}... {status} {duration}")
+        console.print(
+            f"  Step {step.step_index + 1}/{len(wf.steps)}: "
+            f"{step.description}... {status} {duration}"
+        )
         if step.output and not step.success:
             console.print(f"    [dim]{step.output}[/dim]")
         if step.error:
@@ -403,18 +415,22 @@ def run_workflow(
 
     # Summary
     if result.success:
-        console.print(Panel(
-            f"All {len(result.steps)} steps succeeded in {result.duration_seconds:.1f}s",
-            title="Complete",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"All {len(result.steps)} steps succeeded in {result.duration_seconds:.1f}s",
+                title="Complete",
+                border_style="green",
+            )
+        )
     else:
         failed = [s for s in result.steps if not s.success]
-        console.print(Panel(
-            f"{len(failed)} step(s) failed. See errors above.",
-            title="Failed",
-            border_style="red",
-        ))
+        console.print(
+            Panel(
+                f"{len(failed)} step(s) failed. See errors above.",
+                title="Failed",
+                border_style="red",
+            )
+        )
         sys.exit(1)
 
 
@@ -505,7 +521,11 @@ def task_list(status: str, project: str | None, show_all: bool) -> None:
         by_priority.setdefault(t.priority.value, []).append(t)
 
     lines: list[str] = []
-    priority_labels = {"high": "[red]HIGH[/red]", "medium": "[yellow]MEDIUM[/yellow]", "low": "[dim]LOW[/dim]"}
+    priority_labels = {
+        "high": "[red]HIGH[/red]",
+        "medium": "[yellow]MEDIUM[/yellow]",
+        "low": "[dim]LOW[/dim]",
+    }
 
     for prio in ["high", "medium", "low"]:
         group = by_priority.get(prio, [])
@@ -554,7 +574,11 @@ def tasks_shortcut(status: str, show_all: bool) -> None:
         by_priority.setdefault(t.priority.value, []).append(t)
 
     lines: list[str] = []
-    priority_labels = {"high": "[red]HIGH[/red]", "medium": "[yellow]MEDIUM[/yellow]", "low": "[dim]LOW[/dim]"}
+    priority_labels = {
+        "high": "[red]HIGH[/red]",
+        "medium": "[yellow]MEDIUM[/yellow]",
+        "low": "[dim]LOW[/dim]",
+    }
 
     for prio in ["high", "medium", "low"]:
         group = by_priority.get(prio, [])
@@ -721,15 +745,18 @@ def analytics_command() -> None:
 
     # Write dashboard
     from corp_by_os.built_in_actions import _write_analytics_dashboard
+
     _write_analytics_dashboard(report)
 
-    console.print(Panel(
-        f"[bold]{report.total_projects}[/bold] projects, "
-        f"[bold]{report.total_facts}[/bold] facts indexed\n"
-        f"Avg facts/project: {report.avg_facts_per_project}",
-        title="Cross-Project Analytics",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{report.total_projects}[/bold] projects, "
+            f"[bold]{report.total_facts}[/bold] facts indexed\n"
+            f"Avg facts/project: {report.avg_facts_per_project}",
+            title="Cross-Project Analytics",
+            border_style="blue",
+        )
+    )
 
     if report.top_topics:
         table = Table(title="Top Topics", show_lines=False)
@@ -858,10 +885,23 @@ def template_select(goal: str) -> None:
 
 
 EXTRACT_EXTENSIONS = [
-    ".pptx", ".ppt", ".pdf", ".docx", ".doc",
-    ".xlsx", ".xls", ".xlsm", ".csv",
-    ".txt", ".md", ".msg", ".eml",
-    ".mp4", ".mkv", ".mp3", ".wav",
+    ".pptx",
+    ".ppt",
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".xlsx",
+    ".xls",
+    ".xlsm",
+    ".csv",
+    ".txt",
+    ".md",
+    ".msg",
+    ".eml",
+    ".mp4",
+    ".mkv",
+    ".mp3",
+    ".wav",
 ]
 
 
@@ -894,6 +934,7 @@ def extract_command(
         sys.exit(1)
 
     import yaml
+
     with open(routing_map_path, encoding="utf-8") as f:
         routing_map = yaml.safe_load(f)
 
@@ -903,7 +944,9 @@ def extract_command(
     # Load policy
     policy = load_policy(folder_path)
     if not policy.enabled:
-        console.print("[yellow]Extraction disabled for this folder (folder_manifest.yaml).[/yellow]")
+        console.print(
+            "[yellow]Extraction disabled for this folder (folder_manifest.yaml).[/yellow]"
+        )
         sys.exit(1)
 
     extensions = policy.allow_extensions or EXTRACT_EXTENSIONS
@@ -919,8 +962,12 @@ def extract_command(
     # Build manifest
     out_dir = Path(output_dir) if output_dir else cfg.app_data_path / "staging" / folder_path.name
     manifest = build_manifest(
-        scan_results, route, policy, out_dir,
-        project_name=folder_path.name, mywork_root=mywork_root,
+        scan_results,
+        route,
+        policy,
+        out_dir,
+        project_name=folder_path.name,
+        mywork_root=mywork_root,
     )
 
     manifest_path = out_dir / "manifest.json"
@@ -974,14 +1021,17 @@ OVERNIGHT_SCOPES: dict[str, list[str]] = {
 
 @cli.command("overnight")
 @click.option(
-    "--scope", default="all-non-project",
+    "--scope",
+    default="all-non-project",
     type=click.Choice(list(OVERNIGHT_SCOPES.keys())),
     help="Which folders to process",
 )
 @click.option("--budget", default=1.0, type=float, help="Max spend in USD")
 @click.option("--dry-run", is_flag=True, help="Preflight + scan only, no extraction")
 @click.option("--batch", is_flag=True, help="Use Gemini Batch API (50% cheaper)")
-@click.option("--auto-threshold", default=0.90, type=float, help="Auto-approve confidence threshold")
+@click.option(
+    "--auto-threshold", default=0.90, type=float, help="Auto-approve confidence threshold"
+)
 @click.option("--reset", is_flag=True, help="Clear all pending files from state DB and exit")
 def overnight_command(
     scope: str,
@@ -996,9 +1046,7 @@ def overnight_command(
         from corp_by_os.overnight.state import OvernightState
 
         state = OvernightState()
-        cleared = state.conn.execute(
-            "DELETE FROM files WHERE status = 'pending'"
-        ).rowcount
+        cleared = state.conn.execute("DELETE FROM files WHERE status = 'pending'").rowcount
         state.conn.commit()
         console.print(f"[green]Cleared {cleared} pending files from state DB.[/green]")
         state.close()
@@ -1031,7 +1079,7 @@ def overnight_command(
 def _run_folder_extraction(
     scope: str,
     mywork_root: Path,
-    cfg: "AppConfig",  # noqa: F821
+    cfg: AppConfig,  # noqa: F821
     budget: float,
     dry_run: bool,
     batch: bool,
@@ -1136,8 +1184,12 @@ def _run_folder_extraction(
 
         out_dir = cfg.app_data_path / "staging" / folder_name
         manifest = build_manifest(
-            scan_results, route, policy, out_dir,
-            project_name=folder_name, mywork_root=mywork_root,
+            scan_results,
+            route,
+            policy,
+            out_dir,
+            project_name=folder_name,
+            mywork_root=mywork_root,
         )
         manifest_path = out_dir / "manifest.json"
         write_manifest(manifest, manifest_path)
@@ -1161,7 +1213,11 @@ def _run_folder_extraction(
             logger.exception("Extraction failed for %s", folder_name)
             # Mark folder files as error in state DB
             _update_folder_file_statuses(
-                state, run_id, folder_path, "error", error=str(exc),
+                state,
+                run_id,
+                folder_path,
+                "error",
+                error=str(exc),
             )
             monitor.log_event("folder_error", folder=folder_name, error=str(exc))
             continue
@@ -1175,7 +1231,11 @@ def _run_folder_extraction(
         # Update state DB — mark pending files for this folder as done
         per_file_cost = cost / max(done, 1) if cost > 0 else 0.0
         _update_folder_file_statuses(
-            state, run_id, folder_path, "done", cost=per_file_cost,
+            state,
+            run_id,
+            folder_path,
+            "done",
+            cost=per_file_cost,
         )
 
         # Move to vault
@@ -1187,7 +1247,7 @@ def _run_folder_extraction(
     state.complete_run(run_id)
     monitor.mark_complete()
     report = monitor.write_morning_report(state)
-    console.print(f"\n[green]Overnight run complete.[/green]")
+    console.print("\n[green]Overnight run complete.[/green]")
     console.print(f"[dim]Report: {report}[/dim]")
 
     stats = state.get_run_stats(run_id)
@@ -1203,7 +1263,7 @@ def _run_folder_extraction(
 
 
 def _update_folder_file_statuses(
-    state: "OvernightState",  # noqa: F821
+    state: OvernightState,  # noqa: F821
     run_id: str,
     folder_path: Path,
     status: str,
@@ -1222,7 +1282,10 @@ def _update_folder_file_statuses(
         # Match files that belong to this folder
         if f["path"].startswith(folder_prefix):
             state.update_file_status(
-                f["id"], status, cost=cost, error=error,
+                f["id"],
+                status,
+                cost=cost,
+                error=error,
             )
             updated += 1
     return updated
@@ -1230,7 +1293,7 @@ def _update_folder_file_statuses(
 
 def _run_full_reshape(
     mywork_root: Path,
-    cfg: "AppConfig",  # noqa: F821
+    cfg: AppConfig,  # noqa: F821
     budget: float,
     dry_run: bool,
     auto_threshold: float,
@@ -1330,7 +1393,10 @@ def _run_full_reshape(
 
     try:
         plan_path = _write_reshape_plan(
-            classifications, dup_groups, auto_threshold, cfg.app_data_path,
+            classifications,
+            dup_groups,
+            auto_threshold,
+            cfg.app_data_path,
         )
         console.print(f"\n[bold]Plan:[/bold] {plan_path}")
     except Exception as exc:
@@ -1370,7 +1436,7 @@ def _run_full_reshape(
     _run_freshness_phase(cfg)
 
 
-def _run_freshness_phase(cfg: "AppConfig") -> None:  # noqa: F821
+def _run_freshness_phase(cfg: AppConfig) -> None:  # noqa: F821
     """Run freshness scan as a non-fatal overnight phase.
 
     Scans vault notes against source files, writes report to 90_System.
@@ -1426,7 +1492,8 @@ def _run_freshness_phase(cfg: "AppConfig") -> None:  # noqa: F821
         ],
     }
     report_path.write_text(
-        _json.dumps(report_data, indent=2), encoding="utf-8",
+        _json.dumps(report_data, indent=2),
+        encoding="utf-8",
     )
     console.print(f"  [dim]Report: {report_path}[/dim]")
 
@@ -1470,7 +1537,9 @@ def _write_reshape_plan(
                 action += f"rename → {c.proposed_name}"
             if c.proposed_folder:
                 action += f" move → {c.proposed_folder}"
-            lines.append(f"- `{c.current_path}` — {action.strip()} ({c.confidence:.0%}, {c.reasoning})")
+            lines.append(
+                f"- `{c.current_path}` — {action.strip()} ({c.confidence:.0%}, {c.reasoning})"
+            )
         lines.append("")
 
     # Needs review section
@@ -1484,7 +1553,9 @@ def _write_reshape_plan(
                 action += f"rename → {c.proposed_name}"
             if c.proposed_folder:
                 action += f" move → {c.proposed_folder}"
-            lines.append(f"- `{c.current_path}` — {action.strip()} ({c.confidence:.0%}, {c.reasoning})")
+            lines.append(
+                f"- `{c.current_path}` — {action.strip()} ({c.confidence:.0%}, {c.reasoning})"
+            )
         lines.append("")
 
     if not classifications and not dup_groups:
@@ -1539,7 +1610,10 @@ def _execute_reshape_actions(actions: list, mywork_root: Path) -> None:
 
 @cli.command("cleanup-scan")
 @click.option(
-    "--output", "-o", default=None, type=click.Path(),
+    "--output",
+    "-o",
+    default=None,
+    type=click.Path(),
     help="Output path for moves.yaml (default: .corp/moves.yaml)",
 )
 def cleanup_scan_command(output: str | None) -> None:
@@ -1573,14 +1647,16 @@ def cleanup_scan_command(output: str | None) -> None:
     deletes = sum(1 for c in classifications if c.action == "delete")
     keeps = sum(1 for c in classifications if c.action == "keep")
 
-    console.print(Panel(
-        f"Move: {moves}  |  Delete: {deletes}  |  Keep: {keeps}\n\n"
-        f"Review: {output_path}\n"
-        "Set [bold]approved: true[/bold] on entries to execute, then run:\n"
-        "  [cyan]corp apply-moves[/cyan]",
-        title="Cleanup Proposals",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            f"Move: {moves}  |  Delete: {deletes}  |  Keep: {keeps}\n\n"
+            f"Review: {output_path}\n"
+            "Set [bold]approved: true[/bold] on entries to execute, then run:\n"
+            "  [cyan]corp apply-moves[/cyan]",
+            title="Cleanup Proposals",
+            border_style="blue",
+        )
+    )
 
 
 @cli.command("apply-moves")
@@ -1608,12 +1684,14 @@ def apply_moves_command(moves_file: str | None, dry_run: bool) -> None:
 
     result = execute_moves(moves_path, mywork_root, dry_run=dry_run)
 
-    console.print(Panel(
-        f"Moved: {result.moved}  |  Deleted: {result.deleted}  |  "
-        f"Skipped: {result.skipped}  |  Failed: {result.failed}",
-        title="Execution Result",
-        border_style="green" if result.failed == 0 else "red",
-    ))
+    console.print(
+        Panel(
+            f"Moved: {result.moved}  |  Deleted: {result.deleted}  |  "
+            f"Skipped: {result.skipped}  |  Failed: {result.failed}",
+            title="Execution Result",
+            border_style="green" if result.failed == 0 else "red",
+        )
+    )
 
 
 @cli.command("cleanup")
@@ -1698,7 +1776,8 @@ def cleanup_cmd(scope: str, execute: bool) -> None:
         if len(plan.items) > 20:
             table.add_row(
                 f"... and {len(plan.items) - 20} more",
-                "", "",
+                "",
+                "",
             )
 
         console.print(table)
@@ -1728,14 +1807,12 @@ def cleanup_cmd(scope: str, execute: bool) -> None:
             )
 
         console.print(
-            f"\n[bold]Done: {total_deleted} deleted, "
-            f"{total_failed} failed[/bold]",
+            f"\n[bold]Done: {total_deleted} deleted, {total_failed} failed[/bold]",
         )
         console.print(f"  Log: {log_path}")
     else:
         console.print(
-            "\n[dim]This is a plan only. "
-            "Run with --execute to carry out deletions.[/dim]",
+            "\n[dim]This is a plan only. Run with --execute to carry out deletions.[/dim]",
         )
 
     if scope == "all":
@@ -1748,20 +1825,24 @@ def cleanup_cmd(scope: str, execute: bool) -> None:
 
 @cli.command("audit")
 @click.option(
-    "--skip-gemini", is_flag=True,
+    "--skip-gemini",
+    is_flag=True,
     help="Skip Gemini analysis, scan + coverage only",
 )
 @click.option(
-    "--budget", default=0.30, type=float,
+    "--budget",
+    default=0.30,
+    type=float,
     help="Max Gemini spend in USD (default $0.30)",
 )
 @click.option(
-    "--model", default="gemini-2.5-flash", type=str,
+    "--model",
+    default="gemini-2.5-flash",
+    type=str,
     help="Gemini model for analysis",
 )
 def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
     """Full read-only audit of MyWork — scan, analyze, report."""
-    from rich.progress import Progress
 
     from corp_by_os.audit import (
         ANALYSIS_FOLDERS,
@@ -1781,7 +1862,7 @@ def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
     all_files = scan_mywork(mywork_root)
     console.print(f"  Scanned [bold]{len(all_files)}[/bold] files")
 
-    total_gb = sum(f["size_bytes"] for f in all_files) / (1024 ** 3)
+    total_gb = sum(f["size_bytes"] for f in all_files) / (1024**3)
     console.print(f"  Total size: {total_gb:.2f} GB")
 
     # Save raw scan
@@ -1805,7 +1886,9 @@ def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
     if skip_gemini:
         console.print("\n[yellow]Step 2: Gemini analysis skipped (--skip-gemini)[/yellow]")
     else:
-        console.print(f"\n[bold]Step 2: Gemini analysis (budget=${budget:.2f}, model={model})...[/bold]")
+        console.print(
+            f"\n[bold]Step 2: Gemini analysis (budget=${budget:.2f}, model={model})...[/bold]"
+        )
 
         try:
             from corp_by_os.audit import _get_gemini_client
@@ -1813,7 +1896,9 @@ def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
             client = _get_gemini_client()
         except RuntimeError as exc:
             console.print(f"  [red]Cannot init Gemini: {exc}[/red]")
-            console.print("  [dim]Continuing without analysis. Use --skip-gemini to suppress.[/dim]")
+            console.print(
+                "  [dim]Continuing without analysis. Use --skip-gemini to suppress.[/dim]"
+            )
             skip_gemini = True
             client = None
 
@@ -1834,11 +1919,13 @@ def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
                 console.print(f"  Analyzing {folder_name} ({len(files)} files)...")
                 result = analyze_folder(folder_name, files, client, model)
                 analyses.append(result)
-                gemini_responses.append({
-                    "folder": folder_name,
-                    "raw_response": result.get("raw_response"),
-                    "error": result.get("error"),
-                })
+                gemini_responses.append(
+                    {
+                        "folder": folder_name,
+                        "raw_response": result.get("raw_response"),
+                        "error": result.get("error"),
+                    }
+                )
 
                 if result["analysis"]:
                     score = result["analysis"].get("structure_score", "?")
@@ -1858,15 +1945,9 @@ def audit_command(skip_gemini: bool, budget: float, model: str) -> None:
     # --- Step 3: Vault coverage ---
     console.print("\n[bold]Step 3: Vault coverage check...[/bold]")
     coverage = check_vault_coverage(all_files, cfg.vault_path)
-    console.print(
-        f"  Vault notes found: {coverage['total_vault_notes']}"
-    )
-    console.print(
-        f"  Files with extraction: {coverage['extracted_count']}"
-    )
-    console.print(
-        f"  Files without extraction: {coverage['not_extracted_count']}"
-    )
+    console.print(f"  Vault notes found: {coverage['total_vault_notes']}")
+    console.print(f"  Files with extraction: {coverage['extracted_count']}")
+    console.print(f"  Files without extraction: {coverage['not_extracted_count']}")
 
     if coverage.get("by_folder"):
         console.print("  Coverage by folder:")
@@ -1937,21 +2018,32 @@ def ingest_command(
         target = Path(path).resolve()
         if target.is_file():
             result = ingest_file(
-                target, cfg.mywork_root, ops, registry,
-                extract=extract, dry_run=dry_run,
+                target,
+                cfg.mywork_root,
+                ops,
+                registry,
+                extract=extract,
+                dry_run=dry_run,
             )
             file_results.append(result)
         elif target.is_dir():
             # Explicit directory path → ingest as folder package
             pkg_result = ingest_folder(
-                target, cfg.mywork_root, ops, registry,
-                extract=extract, dry_run=dry_run,
+                target,
+                cfg.mywork_root,
+                ops,
+                registry,
+                extract=extract,
+                dry_run=dry_run,
             )
             package_results.append(pkg_result)
     else:
         file_results, package_results = ingest_all(
-            cfg.mywork_root, ops, registry,
-            extract=extract, dry_run=dry_run,
+            cfg.mywork_root,
+            ops,
+            registry,
+            extract=extract,
+            dry_run=dry_run,
         )
 
     if not file_results and not package_results:
@@ -2103,12 +2195,16 @@ def finalize_command(approve_all: bool) -> None:
             ok = finalize_file(Path(s["path"]), cfg.mywork_root, ops)
             if ok:
                 ok_count += 1
-                console.print(f"  [green]{CHECK}[/green] {s['filename']} -> {s['parent_destination']}")
+                console.print(
+                    f"  [green]{CHECK}[/green] {s['filename']} -> {s['parent_destination']}"
+                )
             else:
                 console.print(f"  [red]FAIL[/red] {s['filename']}")
         console.print(f"\n[bold]Finalized: {ok_count}/{len(staged)}[/bold]")
     else:
-        console.print("\nRun [bold]corp finalize --approve-all[/bold] to move all to final destinations.")
+        console.print(
+            "\nRun [bold]corp finalize --approve-all[/bold] to move all to final destinations."
+        )
 
     ops.close()
 
@@ -2142,13 +2238,15 @@ def classify_command(model: str, budget: float, dry_run: bool) -> None:
     if dry_run:
         console.print("[yellow]Dry run — classifying without moving files.[/yellow]")
 
-    console.print(
-        f"[dim]Model: {model} | Budget: ${budget:.2f}[/dim]"
-    )
+    console.print(f"[dim]Model: {model} | Budget: ${budget:.2f}[/dim]")
 
     results = classify_quarantined_batch(
-        ops, registry, cfg.mywork_root,
-        model=model, budget=budget, dry_run=dry_run,
+        ops,
+        registry,
+        cfg.mywork_root,
+        model=model,
+        budget=budget,
+        dry_run=dry_run,
     )
 
     if not results:
@@ -2179,10 +2277,7 @@ def classify_command(model: str, budget: float, dry_run: bool) -> None:
 
     console.print(table)
 
-    staged = sum(
-        1 for r in results
-        if r["classification"].destination != "00_Inbox/_Unmatched"
-    )
+    staged = sum(1 for r in results if r["classification"].destination != "00_Inbox/_Unmatched")
     unmatched = len(results) - staged
     console.print(
         f"\n[bold]Classified: {len(results)} | "
@@ -2190,9 +2285,7 @@ def classify_command(model: str, budget: float, dry_run: bool) -> None:
     )
 
     if not dry_run and staged > 0:
-        console.print(
-            "\nRun [bold]corp finalize[/bold] to review staged files."
-        )
+        console.print("\nRun [bold]corp finalize[/bold] to review staged files.")
 
     ops.close()
 
@@ -2206,8 +2299,10 @@ def classify_command(model: str, budget: float, dry_run: bool) -> None:
 @click.option("--product", default=None, help="Filter by product")
 @click.option("--top", default=10, type=int, help="Number of results")
 @click.option(
-    "--format", "output_format",
-    type=click.Choice(["table", "json"]), default="table",
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"]),
+    default="table",
     help="Output format (json for machine consumption)",
 )
 def retrieve_cmd(
@@ -2291,8 +2386,7 @@ def retrieve_cmd(
         return
 
     table = Table(
-        title=f"Knowledge: '{query}'"
-        + (f" [client={client}]" if client else ""),
+        title=f"Knowledge: '{query}'" + (f" [client={client}]" if client else ""),
     )
     table.add_column("#", style="dim", width=3)
     table.add_column("Title", style="cyan", max_width=50)
@@ -2324,7 +2418,9 @@ def retrieve_cmd(
 @cli.command("prep")
 @click.argument("client")
 @click.option("--model", default="gemini-2.0-flash", help="LLM model for synthesis")
-@click.option("--output", default=None, help="Output directory (default: project folder or 90_System)")
+@click.option(
+    "--output", default=None, help="Output directory (default: project folder or 90_System)"
+)
 def prep_cmd(client: str, model: str, output: str | None) -> None:
     """Prepare a client briefing for an upcoming meeting.
 
@@ -2351,11 +2447,15 @@ def prep_cmd(client: str, model: str, output: str | None) -> None:
         output_dir = Path(output)
     else:
         projects_dir = cfg.mywork_root / "10_Projects"
-        matching = [
-            d for d in projects_dir.iterdir()
-            if d.is_dir()
-            and client.lower().replace(" ", "_") in d.name.lower()
-        ] if projects_dir.exists() else []
+        matching = (
+            [
+                d
+                for d in projects_dir.iterdir()
+                if d.is_dir() and client.lower().replace(" ", "_") in d.name.lower()
+            ]
+            if projects_dir.exists()
+            else []
+        )
         if matching:
             output_dir = matching[0]
         else:
@@ -2372,20 +2472,19 @@ def prep_cmd(client: str, model: str, output: str | None) -> None:
         model=model,
     )
 
-    console.print(f"\n[bold green]Briefing generated![/bold green]")
+    console.print("\n[bold green]Briefing generated![/bold green]")
     console.print(f"  Sources: {briefing.source_count} notes")
     console.print(f"  Cost: ${briefing.cost:.4f}")
     console.print(f"  Saved: {output_dir}")
 
     if briefing.coverage_gaps:
-        console.print(f"\n[yellow]Knowledge gaps:[/yellow]")
+        console.print("\n[yellow]Knowledge gaps:[/yellow]")
         for gap in briefing.coverage_gaps:
             console.print(f"  • {gap}")
 
     if not briefing.retrieval.sufficient:
         console.print(
-            f"\n[red]Warning: Limited knowledge about {client}. "
-            f"Briefing may be incomplete.[/red]",
+            f"\n[red]Warning: Limited knowledge about {client}. Briefing may be incomplete.[/red]",
         )
 
 
@@ -2425,9 +2524,7 @@ def freshness_cmd(verbose: bool) -> None:
     )
 
     # Issues table
-    issues = [
-        r for r in summary.results if r.status not in ("fresh", "no_source")
-    ]
+    issues = [r for r in summary.results if r.status not in ("fresh", "no_source")]
 
     if verbose:
         display = summary.results
@@ -2548,8 +2645,9 @@ def rfp_answer_cmd(
 def chat_command(no_llm: bool) -> None:
     """Interactive chat — natural language workflow routing."""
     from corp_by_os.chat import chat_loop
+
     chat_loop(use_llm=not no_llm)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

@@ -55,11 +55,13 @@ def list_all_project_ids() -> list[str]:
     if not cfg.projects_root.exists():
         return []
 
-    return sorted([
-        f.name
-        for f in cfg.projects_root.iterdir()
-        if f.is_dir() and not f.name.startswith((".", "_"))
-    ])
+    return sorted(
+        [
+            f.name
+            for f in cfg.projects_root.iterdir()
+            if f.is_dir() and not f.name.startswith((".", "_"))
+        ]
+    )
 
 
 def resolve_project(name_or_id: str) -> ResolvedProject | None:

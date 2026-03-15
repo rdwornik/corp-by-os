@@ -63,10 +63,7 @@ class TestBuildNotesContext:
     def test_caps_total_context(self) -> None:
         """Total context capped at max limit."""
         # Create 50 notes with 2000 chars each — should be capped
-        notes = [
-            _make_note(title=f"Note {i}", content="y" * 1500)
-            for i in range(50)
-        ]
+        notes = [_make_note(title=f"Note {i}", content="y" * 1500) for i in range(50)]
         ctx = build_notes_context(notes)
         assert len(ctx) < 55000
         assert "more notes omitted" in ctx
@@ -78,10 +75,12 @@ class TestBuildNotesContext:
 
     def test_includes_topics_and_products(self) -> None:
         """Context includes topics and products in headers."""
-        notes = [_make_note(
-            topics=["WMS", "Integration"],
-            products=["Platform"],
-        )]
+        notes = [
+            _make_note(
+                topics=["WMS", "Integration"],
+                products=["Platform"],
+            )
+        ]
         ctx = build_notes_context(notes)
         assert "WMS" in ctx
         assert "Platform" in ctx
@@ -142,8 +141,7 @@ def prep_db(tmp_path: Path) -> tuple[Path, Path]:
 
     note_file = vault / "lenzing_notes.md"
     note_file.write_text(
-        "---\ntitle: Lenzing Notes\n---\n\n"
-        "Lenzing needs demand planning. Current system: SAP APO.",
+        "---\ntitle: Lenzing Notes\n---\n\nLenzing needs demand planning. Current system: SAP APO.",
         encoding="utf-8",
     )
 
@@ -153,8 +151,11 @@ def prep_db(tmp_path: Path) -> tuple[Path, Path]:
             topics, products, domains, note_path)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            "lenzing_planning", "Lenzing", "Lenzing Notes",
-            "notes", "meeting",
+            "lenzing_planning",
+            "Lenzing",
+            "Lenzing Notes",
+            "notes",
+            "meeting",
             json.dumps(["Demand Planning"]),
             json.dumps(["Cognitive Demand Planning"]),
             json.dumps(["Planning"]),
@@ -173,8 +174,10 @@ class TestGeneratePrep:
         db_path, vault = prep_db
         output_dir = vault.parent / "output"
 
-        with patch("corp_by_os.retrieve.prep.genai") as mock_genai, \
-             patch("corp_by_os.retrieve.prep.genai_types") as mock_types:
+        with (
+            patch("corp_by_os.retrieve.prep.genai") as mock_genai,
+            patch("corp_by_os.retrieve.prep.genai_types") as mock_types,
+        ):
             mock_response = MagicMock()
             mock_response.text = "## Client Overview\n\nLenzing is a fiber company."
             mock_client = MagicMock()
@@ -183,7 +186,9 @@ class TestGeneratePrep:
             mock_types.GenerateContentConfig = MagicMock()
 
             briefing = generate_prep(
-                "Lenzing", db_path, vault,
+                "Lenzing",
+                db_path,
+                vault,
                 output_dir=output_dir,
             )
 
@@ -200,8 +205,10 @@ class TestGeneratePrep:
         db_path, vault = prep_db
         output_dir = vault.parent / "custom_output"
 
-        with patch("corp_by_os.retrieve.prep.genai") as mock_genai, \
-             patch("corp_by_os.retrieve.prep.genai_types") as mock_types:
+        with (
+            patch("corp_by_os.retrieve.prep.genai") as mock_genai,
+            patch("corp_by_os.retrieve.prep.genai_types") as mock_types,
+        ):
             mock_response = MagicMock()
             mock_response.text = "Briefing content"
             mock_client = MagicMock()
@@ -210,7 +217,9 @@ class TestGeneratePrep:
             mock_types.GenerateContentConfig = MagicMock()
 
             generate_prep(
-                "Lenzing", db_path, vault,
+                "Lenzing",
+                db_path,
+                vault,
                 output_dir=output_dir,
             )
 
@@ -227,8 +236,10 @@ class TestGeneratePrep:
         conn.executescript(_TEST_SCHEMA)
         conn.close()
 
-        with patch("corp_by_os.retrieve.prep.genai") as mock_genai, \
-             patch("corp_by_os.retrieve.prep.genai_types") as mock_types:
+        with (
+            patch("corp_by_os.retrieve.prep.genai") as mock_genai,
+            patch("corp_by_os.retrieve.prep.genai_types") as mock_types,
+        ):
             mock_response = MagicMock()
             mock_response.text = "No information available."
             mock_client = MagicMock()
@@ -237,7 +248,9 @@ class TestGeneratePrep:
             mock_types.GenerateContentConfig = MagicMock()
 
             briefing = generate_prep(
-                "UnknownCorp", db_path, vault,
+                "UnknownCorp",
+                db_path,
+                vault,
             )
 
         assert briefing.source_count == 0
@@ -247,15 +260,19 @@ class TestGeneratePrep:
         """LLM failure returns message asking for manual review."""
         db_path, vault = prep_db
 
-        with patch("corp_by_os.retrieve.prep.genai") as mock_genai, \
-             patch("corp_by_os.retrieve.prep.genai_types") as mock_types:
+        with (
+            patch("corp_by_os.retrieve.prep.genai") as mock_genai,
+            patch("corp_by_os.retrieve.prep.genai_types") as mock_types,
+        ):
             mock_client = MagicMock()
             mock_client.models.generate_content.side_effect = RuntimeError("API down")
             mock_genai.Client.return_value = mock_client
             mock_types.GenerateContentConfig = MagicMock()
 
             briefing = generate_prep(
-                "Lenzing", db_path, vault,
+                "Lenzing",
+                db_path,
+                vault,
             )
 
         assert "FAILED" in briefing.briefing_text
@@ -268,7 +285,9 @@ class TestGeneratePrep:
 
         with patch("corp_by_os.retrieve.prep.genai", None):
             briefing = generate_prep(
-                "Lenzing", db_path, vault,
+                "Lenzing",
+                db_path,
+                vault,
             )
 
         assert "UNAVAILABLE" in briefing.briefing_text

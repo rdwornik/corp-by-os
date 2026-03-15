@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import logging
 import shlex
-import sys
 
 from rich.console import Console
 from rich.panel import Panel
 
-from corp_by_os.config import get_config
 from corp_by_os.intent_router import Intent, route
-from corp_by_os.workflow_engine import execute_workflow, load_workflows, preview_workflow
+from corp_by_os.workflow_engine import execute_workflow, load_workflows
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -79,11 +77,13 @@ def chat_loop(use_llm: bool = True) -> None:
         _handle_intent(intent, workflows, history)
 
         # Store turn
-        history.append({
-            "user": user_input,
-            "workflow": intent.workflow_id or "",
-            "response": intent.response_text or "",
-        })
+        history.append(
+            {
+                "user": user_input,
+                "workflow": intent.workflow_id or "",
+                "response": intent.response_text or "",
+            }
+        )
 
         # Keep last 10 turns
         if len(history) > 10:
@@ -128,6 +128,7 @@ def _handle_intent(intent: Intent, workflows: dict, history: list) -> None:
     if "project" in params:
         try:
             from corp_by_os.project_resolver import resolve_project
+
             resolved = resolve_project(params["project"])
             if resolved and resolved.onedrive_path:
                 params["project_path"] = str(resolved.onedrive_path)
@@ -161,7 +162,10 @@ def _handle_intent(intent: Intent, workflows: dict, history: list) -> None:
     for step in result.steps:
         status = "[green]OK[/green]" if step.success else "[red]FAIL[/red]"
         duration = f"({step.duration_seconds:.1f}s)" if step.duration_seconds > 0 else ""
-        console.print(f"  Step {step.step_index + 1}/{len(wf.steps)}: {step.description}... {status} {duration}")
+        console.print(
+            f"  Step {step.step_index + 1}/{len(wf.steps)}:"
+            f" {step.description}... {status} {duration}"
+        )
         if step.output and step.success:
             # Show output for informational steps
             if any(kw in wf.id for kw in ("task", "attention", "brief")):
@@ -173,7 +177,7 @@ def _handle_intent(intent: Intent, workflows: dict, history: list) -> None:
     if result.success:
         console.print(f"\n[green]Gotowe[/green] ({result.duration_seconds:.1f}s)")
     else:
-        console.print(f"\n[red]Nie udało się.[/red]")
+        console.print("\n[red]Nie udało się.[/red]")
 
 
 def _show_help(workflows: dict) -> None:
@@ -198,8 +202,8 @@ def _show_help(workflows: dict) -> None:
 def _show_status() -> None:
     """Show quick status summary."""
     try:
-        from corp_by_os.vault_io import list_projects
         from corp_by_os.task_manager import list_tasks
+        from corp_by_os.vault_io import list_projects
 
         projects = list_projects()
         tasks = list_tasks(status_filter="todo")
@@ -223,7 +227,7 @@ def _run_direct_command(cmd_str: str) -> None:
     console.print(f"[dim]> {full_cmd}[/dim]")
 
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["corp"] + shlex.split(cmd_str),
             capture_output=False,
             text=True,

@@ -20,6 +20,7 @@ class AppConfig:
     """Application configuration — immutable after creation."""
 
     vault_path: Path
+    mywork_root: Path
     projects_root: Path
     templates_root: Path
     archive_root: Path
@@ -43,6 +44,7 @@ def _load_agents(repo_path: Path) -> dict[str, Any]:
             return data.get("agents", {})
         except yaml.YAMLError as e:
             import logging
+
             logging.getLogger(__name__).warning("Failed to parse agents.yaml: %s", e)
             return {}
     return {}
@@ -77,9 +79,14 @@ def get_config() -> AppConfig:
         "APP_DATA_PATH",
         os.path.expandvars(r"%LOCALAPPDATA%\corp-by-os"),
     )
+    mywork_root = os.environ.get(
+        "MYWORK_ROOT",
+        r"C:\Users\1028120\Documents\MyWork",
+    )
 
     return AppConfig(
         vault_path=_expand_path(vault_path),
+        mywork_root=_expand_path(mywork_root),
         projects_root=_expand_path(projects_root),
         templates_root=_expand_path(templates_root),
         archive_root=_expand_path(archive_root),

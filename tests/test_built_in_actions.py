@@ -71,7 +71,9 @@ class TestCreateVaultSkeleton:
         create_vault_skeleton({"client": "TestCo", "product": "Planning"})
 
         cfg = get_config()
-        info_file = cfg.vault_path / VaultZone.PROJECTS.value / "testco_planning" / "project-info.yaml"
+        info_file = (
+            cfg.vault_path / VaultZone.PROJECTS.value / "testco_planning" / "project-info.yaml"
+        )
         data = yaml.safe_load(info_file.read_text(encoding="utf-8"))
         assert data["project_id"] == "testco_planning"
         assert data["client"] == "TestCo"
@@ -102,10 +104,12 @@ class TestCreateVaultSkeleton:
         ZZZ_Test_IntegrationTest_Planning — vault skeleton must use the same
         base name lowercased.
         """
-        result = create_vault_skeleton({
-            "client": "ZZZ_Test",
-            "product": "IntegrationTest_Planning",
-        })
+        result = create_vault_skeleton(
+            {
+                "client": "ZZZ_Test",
+                "product": "IntegrationTest_Planning",
+            }
+        )
         assert result.success is True
 
         cfg = get_config()
@@ -154,9 +158,11 @@ class TestScanAttention:
 class TestGenerateAttentionDashboard:
     def test_writes_dashboard(self, app_config) -> None:
         params = {
-            "_attention_issues": yaml.dump([
-                {"project": "test", "severity": "HIGH", "issue": "Missing info"},
-            ]),
+            "_attention_issues": yaml.dump(
+                [
+                    {"project": "test", "severity": "HIGH", "issue": "Missing info"},
+                ]
+            ),
             "_attention_project_count": "5",
         }
         result = generate_attention_dashboard(params)
@@ -219,18 +225,22 @@ class TestArchiveProject:
 
         # Patch to use tmp archive
         import os
+
         os.environ["ARCHIVE_ROOT"] = str(archive_dir)
         get_config.cache_clear()
 
-        result = archive_project({
-            "project": "Honda_Planning",
-            "reason": "won",
-            "project_path": str(tmp_projects / "Honda_Planning"),
-        })
+        result = archive_project(
+            {
+                "project": "Honda_Planning",
+                "reason": "won",
+                "project_path": str(tmp_projects / "Honda_Planning"),
+            }
+        )
         assert result.success is True
 
         # Verify moved
         from datetime import date
+
         year = str(date.today().year)
         assert (archive_dir / year / "Honda_Planning").exists()
         assert not (tmp_projects / "Honda_Planning").exists()
@@ -273,9 +283,11 @@ class TestCopyToVault:
         (knowledge_dir / "index.md").write_text("# Index", encoding="utf-8")
         (knowledge_dir / "facts.yaml").write_text("- fact: test", encoding="utf-8")
 
-        result = copy_to_vault_action({
-            "project": "lenzing_planning",
-            "project_path": str(project_dir),
-        })
+        result = copy_to_vault_action(
+            {
+                "project": "lenzing_planning",
+                "project_path": str(project_dir),
+            }
+        )
         assert result.success is True
         assert "Copied" in result.output

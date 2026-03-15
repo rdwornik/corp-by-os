@@ -126,7 +126,8 @@ def sample_registry(tmp_path: Path) -> tuple[Path, list[TemplateInfo]]:
         ],
     }
     registry_path.write_text(
-        yaml.dump(data, default_flow_style=False), encoding="utf-8",
+        yaml.dump(data, default_flow_style=False),
+        encoding="utf-8",
     )
     return registry_path, templates
 
@@ -287,9 +288,12 @@ class TestSelect:
 
 
 class TestCopy:
-    def test_copy_template(self, templates_dir: Path, tmp_path: Path, app_config, monkeypatch) -> None:
+    def test_copy_template(
+        self, templates_dir: Path, tmp_path: Path, app_config, monkeypatch
+    ) -> None:
         monkeypatch.setenv("TEMPLATES_ROOT", str(templates_dir))
         from corp_by_os.config import get_config
+
         get_config.cache_clear()
 
         template = TemplateInfo(
@@ -310,6 +314,7 @@ class TestCopy:
     def test_copy_missing_source(self, tmp_path: Path, app_config, monkeypatch) -> None:
         monkeypatch.setenv("TEMPLATES_ROOT", str(tmp_path / "empty"))
         from corp_by_os.config import get_config
+
         get_config.cache_clear()
 
         template = TemplateInfo(

@@ -98,8 +98,12 @@ class TestClassifyFileLlm:
         with patch("corp_by_os.ingest.llm_classifier.genai") as mock_genai:
             mock_genai.Client.return_value = mock_client
             result = classify_file_llm(
-                "Architecture_Overview.pdf", ".pdf", 2.5,
-                "00_Inbox", None, ["60_Source_Library/01_Product_Docs"],
+                "Architecture_Overview.pdf",
+                ".pdf",
+                2.5,
+                "00_Inbox",
+                None,
+                ["60_Source_Library/01_Product_Docs"],
             )
 
         assert result.destination == "60_Source_Library/01_Product_Docs"
@@ -109,7 +113,9 @@ class TestClassifyFileLlm:
     def test_caps_confidence_at_085(self) -> None:
         """LLM confidence is capped at 0.85."""
         mock_response = MagicMock()
-        mock_response.text = '{"destination": "10_Projects", "confidence": 0.99, "reasoning": "Very sure"}'
+        mock_response.text = (
+            '{"destination": "10_Projects", "confidence": 0.99, "reasoning": "Very sure"}'
+        )
 
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
@@ -117,8 +123,12 @@ class TestClassifyFileLlm:
         with patch("corp_by_os.ingest.llm_classifier.genai") as mock_genai:
             mock_genai.Client.return_value = mock_client
             result = classify_file_llm(
-                "test.pdf", ".pdf", 1.0,
-                "00_Inbox", None, [],
+                "test.pdf",
+                ".pdf",
+                1.0,
+                "00_Inbox",
+                None,
+                [],
             )
 
         assert result.confidence == 0.85
@@ -134,8 +144,12 @@ class TestClassifyFileLlm:
         with patch("corp_by_os.ingest.llm_classifier.genai") as mock_genai:
             mock_genai.Client.return_value = mock_client
             result = classify_file_llm(
-                "mystery.bin", ".bin", 0.5,
-                "00_Inbox", None, [],
+                "mystery.bin",
+                ".bin",
+                0.5,
+                "00_Inbox",
+                None,
+                [],
             )
 
         assert result.destination == "00_Inbox/_Unmatched"
@@ -149,8 +163,12 @@ class TestClassifyFileLlm:
         with patch("corp_by_os.ingest.llm_classifier.genai") as mock_genai:
             mock_genai.Client.return_value = mock_client
             result = classify_file_llm(
-                "test.pdf", ".pdf", 1.0,
-                "00_Inbox", None, [],
+                "test.pdf",
+                ".pdf",
+                1.0,
+                "00_Inbox",
+                None,
+                [],
             )
 
         assert result.destination == "00_Inbox/_Unmatched"
@@ -161,8 +179,12 @@ class TestClassifyFileLlm:
         """Missing google-genai SDK returns graceful fallback."""
         with patch("corp_by_os.ingest.llm_classifier.genai", None):
             result = classify_file_llm(
-                "test.pdf", ".pdf", 1.0,
-                "00_Inbox", None, [],
+                "test.pdf",
+                ".pdf",
+                1.0,
+                "00_Inbox",
+                None,
+                [],
             )
             assert result.destination == "00_Inbox/_Unmatched"
             assert result.confidence == 0.0
@@ -181,11 +203,15 @@ class TestClassifyQuarantinedBatch:
             folder_l2="_Unmatched",
         )
         ops.update_asset_status(
-            f"00_Inbox/_Unmatched/{filename}", "quarantined",
+            f"00_Inbox/_Unmatched/{filename}",
+            "quarantined",
         )
 
     def test_respects_budget(
-        self, ops: OpsDB, registry: ContentRegistry, tmp_path: Path,
+        self,
+        ops: OpsDB,
+        registry: ContentRegistry,
+        tmp_path: Path,
     ) -> None:
         """Batch classification stops when budget is exhausted."""
         # Add 5 quarantined files
@@ -193,7 +219,9 @@ class TestClassifyQuarantinedBatch:
             self._add_quarantined(ops, f"file_{i}.pdf")
 
         mock_response = MagicMock()
-        mock_response.text = '{"destination": "00_Inbox/_Unmatched", "confidence": 0.3, "reasoning": "unsure"}'
+        mock_response.text = (
+            '{"destination": "00_Inbox/_Unmatched", "confidence": 0.3, "reasoning": "unsure"}'
+        )
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
@@ -201,14 +229,20 @@ class TestClassifyQuarantinedBatch:
             mock_genai.Client.return_value = mock_client
             # Budget of $0.002 → should process only 2 files (at $0.001 each)
             results = classify_quarantined_batch(
-                ops, registry, tmp_path,
-                budget=0.002, dry_run=True,
+                ops,
+                registry,
+                tmp_path,
+                budget=0.002,
+                dry_run=True,
             )
 
         assert len(results) == 2
 
     def test_dry_run_no_move(
-        self, ops: OpsDB, registry: ContentRegistry, tmp_path: Path,
+        self,
+        ops: OpsDB,
+        registry: ContentRegistry,
+        tmp_path: Path,
     ) -> None:
         """Dry run classifies but doesn't move files."""
         self._add_quarantined(ops, "test.pdf")
@@ -226,7 +260,9 @@ class TestClassifyQuarantinedBatch:
         with patch("corp_by_os.ingest.llm_classifier.genai") as mock_genai:
             mock_genai.Client.return_value = mock_client
             results = classify_quarantined_batch(
-                ops, registry, tmp_path,
+                ops,
+                registry,
+                tmp_path,
                 dry_run=True,
             )
 
@@ -238,18 +274,25 @@ class TestClassifyQuarantinedBatch:
         assert asset["status"] == "quarantined"
 
     def test_no_quarantined(
-        self, ops: OpsDB, registry: ContentRegistry, tmp_path: Path,
+        self,
+        ops: OpsDB,
+        registry: ContentRegistry,
+        tmp_path: Path,
     ) -> None:
         """Empty quarantine returns empty list."""
         results = classify_quarantined_batch(
-            ops, registry, tmp_path, dry_run=True,
+            ops,
+            registry,
+            tmp_path,
+            dry_run=True,
         )
         assert results == []
 
 
 class TestGetAllDestinations:
     def test_includes_registry_and_standard(
-        self, registry: ContentRegistry,
+        self,
+        registry: ContentRegistry,
     ) -> None:
         """All valid destinations extracted from registry + standard folders."""
         dests = _get_all_destinations(registry)

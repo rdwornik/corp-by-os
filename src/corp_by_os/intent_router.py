@@ -75,13 +75,23 @@ REASON_KEYWORDS: dict[str, str] = {
 # --- Polish day names for date resolution ---
 
 _WEEKDAY_MAP: dict[str, int] = {
-    "poniedzialek": 0, "poniedzialku": 0,
-    "wtorek": 1, "wtorku": 1,
-    "sroda": 2, "srode": 2, "srody": 2,
-    "czwartek": 3, "czwartku": 3,
-    "piatek": 4, "piatku": 4,
-    "sobota": 5, "soboty": 5, "sobote": 5,
-    "niedziela": 6, "niedzieli": 6, "niedziele": 6,
+    "poniedzialek": 0,
+    "poniedzialku": 0,
+    "wtorek": 1,
+    "wtorku": 1,
+    "sroda": 2,
+    "srode": 2,
+    "srody": 2,
+    "czwartek": 3,
+    "czwartku": 3,
+    "piatek": 4,
+    "piatku": 4,
+    "sobota": 5,
+    "soboty": 5,
+    "sobote": 5,
+    "niedziela": 6,
+    "niedzieli": 6,
+    "niedziele": 6,
     "monday": 0,
     "tuesday": 1,
     "wednesday": 2,
@@ -92,18 +102,30 @@ _WEEKDAY_MAP: dict[str, int] = {
 }
 
 _POLISH_MONTHS: dict[str, int] = {
-    "stycznia": 1, "styczen": 1,
-    "lutego": 2, "luty": 2,
-    "marca": 3, "marzec": 3,
-    "kwietnia": 4, "kwiecien": 4,
-    "maja": 5, "maj": 5,
-    "czerwca": 6, "czerwiec": 6,
-    "lipca": 7, "lipiec": 7,
-    "sierpnia": 8, "sierpien": 8,
-    "wrzesnia": 9, "wrzesien": 9,
-    "pazdziernika": 10, "pazdziernik": 10,
-    "listopada": 11, "listopad": 11,
-    "grudnia": 12, "grudzien": 12,
+    "stycznia": 1,
+    "styczen": 1,
+    "lutego": 2,
+    "luty": 2,
+    "marca": 3,
+    "marzec": 3,
+    "kwietnia": 4,
+    "kwiecien": 4,
+    "maja": 5,
+    "maj": 5,
+    "czerwca": 6,
+    "czerwiec": 6,
+    "lipca": 7,
+    "lipiec": 7,
+    "sierpnia": 8,
+    "sierpien": 8,
+    "wrzesnia": 9,
+    "wrzesien": 9,
+    "pazdziernika": 10,
+    "pazdziernik": 10,
+    "listopada": 11,
+    "listopad": 11,
+    "grudnia": 12,
+    "grudzien": 12,
 }
 
 
@@ -134,6 +156,7 @@ def route(
     if use_llm:
         try:
             from corp_by_os.llm_router import classify_intent
+
             return classify_intent(user_input, workflows, context)
         except Exception as e:
             logger.warning("LLM routing failed: %s", e)
@@ -242,7 +265,7 @@ def _extract_parameters(
     params: dict[str, str] = {}
 
     # Extract by parameter type
-    for param_name, param_def in workflow.parameters.items():
+    for param_name, _param_def in workflow.parameters.items():
         if param_name == "client":
             val = _extract_client(normalized, raw_input)
             if val:
@@ -287,6 +310,7 @@ def _extract_client(normalized: str, raw: str) -> str | None:
     """Extract client name — check against known projects or capitalized words."""
     try:
         from corp_by_os.project_resolver import list_all_project_ids
+
         projects = list_all_project_ids()
         for proj in projects:
             client_slug = proj.split("_")[0].lower()
@@ -297,9 +321,25 @@ def _extract_client(normalized: str, raw: str) -> str | None:
 
     # Fallback: look for capitalized words that aren't common Polish/English words
     skip_words = {
-        "new", "nowe", "opportunity", "projekt", "project", "firma",
-        "client", "klient", "kontakt", "contact", "product", "produkt",
-        "mam", "need", "dla", "for", "przygotuj", "prepare", "na",
+        "new",
+        "nowe",
+        "opportunity",
+        "projekt",
+        "project",
+        "firma",
+        "client",
+        "klient",
+        "kontakt",
+        "contact",
+        "product",
+        "produkt",
+        "mam",
+        "need",
+        "dla",
+        "for",
+        "przygotuj",
+        "prepare",
+        "na",
     }
     words = raw.split()
     for word in words:
@@ -323,7 +363,8 @@ def _extract_product(normalized: str) -> str | None:
 def _extract_project_ref(normalized: str) -> str | None:
     """Extract project reference — fuzzy match against known projects."""
     try:
-        from corp_by_os.project_resolver import resolve_project, list_all_project_ids
+        from corp_by_os.project_resolver import list_all_project_ids, resolve_project
+
         projects = list_all_project_ids()
         for proj in projects:
             # Check both full name and client slug
@@ -348,15 +389,39 @@ def _strip_date_references(text: str) -> str:
     """
     # Polish weekday forms — both with and without diacritics
     _PL_WEEKDAYS_ALL = [
-        "poniedziałek", "poniedzialek", "poniedziałku", "poniedzialku",
-        "wtorek", "wtorku",
-        "środa", "sroda", "środę", "srode", "środy", "srody",
-        "czwartek", "czwartku",
-        "piątek", "piatek", "piątku", "piatku",
-        "sobota", "soboty", "sobotę", "sobote",
-        "niedziela", "niedzieli", "niedzielę", "niedziele",
-        "monday", "tuesday", "wednesday", "thursday",
-        "friday", "saturday", "sunday",
+        "poniedziałek",
+        "poniedzialek",
+        "poniedziałku",
+        "poniedzialku",
+        "wtorek",
+        "wtorku",
+        "środa",
+        "sroda",
+        "środę",
+        "srode",
+        "środy",
+        "srody",
+        "czwartek",
+        "czwartku",
+        "piątek",
+        "piatek",
+        "piątku",
+        "piatku",
+        "sobota",
+        "soboty",
+        "sobotę",
+        "sobote",
+        "niedziela",
+        "niedzieli",
+        "niedzielę",
+        "niedziele",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
     ]
     _PL_RELATIVE = ["dzisiaj", "jutro", "pojutrze", "today", "tomorrow"]
     _PL_MONTHS_ALL = list(_POLISH_MONTHS.keys())
@@ -454,8 +519,16 @@ def _extract_contact(raw: str) -> str | None:
 def _extract_topic(normalized: str, raw: str) -> str | None:
     """Extract topic — words like 'demo', 'discovery', 'technical', etc."""
     topic_keywords = [
-        "demo", "discovery", "technical", "deep dive", "workshop",
-        "overview", "review", "kickoff", "planning", "assessment",
+        "demo",
+        "discovery",
+        "technical",
+        "deep dive",
+        "workshop",
+        "overview",
+        "review",
+        "kickoff",
+        "planning",
+        "assessment",
     ]
     for kw in topic_keywords:
         if kw in normalized:
@@ -467,14 +540,19 @@ def _extract_title(normalized: str, raw: str) -> str | None:
     """Extract task title from input."""
     # Remove common prefixes
     prefixes = [
-        "dodaj task", "add task", "musze zrobic", "need to",
-        "zaplanuj", "przypomnij", "remind me",
+        "dodaj task",
+        "add task",
+        "musze zrobic",
+        "need to",
+        "zaplanuj",
+        "przypomnij",
+        "remind me",
     ]
     text = raw.strip()
     for prefix in prefixes:
         idx = normalized.find(prefix)
         if idx >= 0:
-            text = raw[idx + len(prefix):].strip().lstrip(",").strip()
+            text = raw[idx + len(prefix) :].strip().lstrip(",").strip()
             break
 
     if text:
@@ -514,7 +592,7 @@ def _phrase_matches(phrase: str, text: str) -> bool:
         else:
             # Longer words: check if pw is a prefix of any text word
             # Use minimum stem length of 4
-            stem = pw[:max(4, len(pw) - 2)]
+            stem = pw[: max(4, len(pw) - 2)]
             if not any(tw.startswith(stem) for tw in text_words):
                 return False
 

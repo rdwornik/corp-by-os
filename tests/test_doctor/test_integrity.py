@@ -29,9 +29,14 @@ def _make_mywork(tmp_path: Path) -> Path:
     """Create a valid MyWork structure."""
     mywork = tmp_path / "mywork"
     for folder in [
-        "00_Inbox", "10_Projects", "20_Extra_Initiatives",
-        "30_Templates", "50_RFP", "60_Source_Library",
-        "70_Admin", "90_System",
+        "00_Inbox",
+        "10_Projects",
+        "20_Extra_Initiatives",
+        "30_Templates",
+        "50_RFP",
+        "60_Source_Library",
+        "70_Admin",
+        "90_System",
     ]:
         (mywork / folder).mkdir(parents=True, exist_ok=True)
     return mywork
@@ -58,7 +63,7 @@ def _make_ops_db(path: Path, assets: list[tuple[str, str]] | None = None) -> Non
             status TEXT NOT NULL DEFAULT 'discovered'
         )""",
     )
-    for asset_path, status in (assets or []):
+    for asset_path, status in assets or []:
         conn.execute(
             "INSERT INTO assets (path, status) VALUES (?, ?)",
             (asset_path, status),
@@ -136,11 +141,14 @@ class TestCheckRegistryPaths:
         mywork = _make_mywork(tmp_path)
         registry = tmp_path / "registry.yaml"
         (mywork / "60_Source_Library" / "Training").mkdir(parents=True)
-        _write_yaml(registry, {
-            "series": {
-                "test_series": {"destination": "60_Source_Library/Training"},
+        _write_yaml(
+            registry,
+            {
+                "series": {
+                    "test_series": {"destination": "60_Source_Library/Training"},
+                },
             },
-        })
+        )
 
         report = IntegrityReport()
         _check_registry_paths(report, mywork, registry)
@@ -151,11 +159,14 @@ class TestCheckRegistryPaths:
         """Missing destination folder -> warning with fix hint."""
         mywork = _make_mywork(tmp_path)
         registry = tmp_path / "registry.yaml"
-        _write_yaml(registry, {
-            "series": {
-                "missing_series": {"destination": "99_NonExistent/Folder"},
+        _write_yaml(
+            registry,
+            {
+                "series": {
+                    "missing_series": {"destination": "99_NonExistent/Folder"},
+                },
             },
-        })
+        )
 
         report = IntegrityReport()
         _check_registry_paths(report, mywork, registry)

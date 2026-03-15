@@ -16,15 +16,23 @@ from datetime import datetime
 from pathlib import Path
 
 from corp_by_os.ops.database import OpsDB
-from corp_by_os.ops.registry import ContentRegistry, RegistryMatch
+from corp_by_os.ops.registry import ContentRegistry
 
 logger = logging.getLogger(__name__)
 
 # Infrastructure files/folders to skip during inbox scan
 _SKIP_NAMES = {
-    ".corp", "_knowledge", "__pycache__", ".git", ".venv",
-    "desktop.ini", "Thumbs.db", ".DS_Store",
-    "_triage_log.jsonl", "_triage_schema.yaml", "folder_manifest.yaml",
+    ".corp",
+    "_knowledge",
+    "__pycache__",
+    ".git",
+    ".venv",
+    "desktop.ini",
+    "Thumbs.db",
+    ".DS_Store",
+    "_triage_log.jsonl",
+    "_triage_schema.yaml",
+    "folder_manifest.yaml",
 }
 
 # Directories in Inbox that are infrastructure, not packages
@@ -119,13 +127,15 @@ def scan_inbox(mywork_root: Path) -> list[InboxItem]:
                 default=0,
             )
             total_size = sum(f.stat().st_size for f in file_list)
-            items.append(InboxItem(
-                path=entry,
-                is_folder=True,
-                file_count=len(file_list),
-                total_size_bytes=total_size,
-                depth=max_depth,
-            ))
+            items.append(
+                InboxItem(
+                    path=entry,
+                    is_folder=True,
+                    file_count=len(file_list),
+                    total_size_bytes=total_size,
+                    depth=max_depth,
+                )
+            )
         elif entry.is_file():
             if entry.suffix.lower() in _SKIP_EXTENSIONS:
                 continue
@@ -135,7 +145,8 @@ def scan_inbox(mywork_root: Path) -> list[InboxItem]:
     file_count = len(items) - folder_count
     logger.info(
         "Inbox scan: %d file(s) and %d folder(s) found",
-        file_count, folder_count,
+        file_count,
+        folder_count,
     )
     return items
 
@@ -160,9 +171,7 @@ def ingest_file(
 
     # Build folder context (relative to mywork_root)
     try:
-        folder_context = str(
-            parent.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
+        folder_context = str(parent.relative_to(mywork_root.resolve())).replace("\\", "/")
     except ValueError:
         folder_context = None
 
@@ -215,7 +224,11 @@ def ingest_file(
     folder_l2 = dest_parts[1] if len(dest_parts) > 1 else None
 
     # Step 4: Record in ops.db (before moving, so we have the record even if move fails)
-    source_rel = str(file_path.relative_to(mywork_root.resolve())).replace("\\", "/") if folder_context else filename
+    source_rel = (
+        str(file_path.relative_to(mywork_root.resolve())).replace("\\", "/")
+        if folder_context
+        else filename
+    )
 
     if not dry_run:
         asset_id = ops.upsert_asset(
@@ -249,7 +262,10 @@ def ingest_file(
             shutil.move(str(file_path), str(dest_file))
             logger.info(
                 "Moved: %s -> %s (%s, conf=%.2f)",
-                filename, dest_rel, result.action, result.confidence,
+                filename,
+                dest_rel,
+                result.action,
+                result.confidence,
             )
 
             # Update asset path to new location, then record status
@@ -276,7 +292,11 @@ def ingest_file(
         try:
             vault_note, cost = _run_extraction(
                 dest_file if not dry_run else file_path,
-                mywork_root, ops, asset_id, content_hash, mtime_str,
+                mywork_root,
+                ops,
+                asset_id,
+                content_hash,
+                mtime_str,
             )
             result.extracted = vault_note is not None
             result.extraction_cost = cost
@@ -311,7 +331,8 @@ def ingest_all(
 
     logger.info(
         "Found %d file(s) and %d folder(s) in Inbox.",
-        len(files), len(folders),
+        len(files),
+        len(folders),
     )
 
     file_results: list[IngestResult] = []
@@ -320,16 +341,24 @@ def ingest_all(
     # Process folders first (they're larger units)
     for item in folders:
         result = ingest_folder(
-            item.path, mywork_root, ops, registry,
-            extract=extract, dry_run=dry_run,
+            item.path,
+            mywork_root,
+            ops,
+            registry,
+            extract=extract,
+            dry_run=dry_run,
         )
         package_results.append(result)
 
     # Process loose files
     for item in files:
         result = ingest_file(
-            item.path, mywork_root, ops, registry,
-            extract=extract, dry_run=dry_run,
+            item.path,
+            mywork_root,
+            ops,
+            registry,
+            extract=extract,
+            dry_run=dry_run,
         )
         file_results.append(result)
 
@@ -352,9 +381,7 @@ def ingest_folder(
     """
     folder_path = folder_path.resolve()
     try:
-        rel_str = str(
-            folder_path.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
+        rel_str = str(folder_path.relative_to(mywork_root.resolve())).replace("\\", "/")
     except ValueError:
         rel_str = folder_path.name
 
@@ -372,7 +399,10 @@ def ingest_folder(
         logger.warning(
             "Large folder: %s (depth=%d, size=%.1fMB, files=%d). "
             "Consider reviewing before ingesting.",
-            folder_path.name, max_depth, total_size_mb, file_count,
+            folder_path.name,
+            max_depth,
+            total_size_mb,
+            file_count,
         )
 
     def _error_result(error: str) -> PackageIngestResult:
@@ -420,11 +450,7 @@ def ingest_folder(
         dest_folder = match.destination
     else:
         action = "staged"
-        dest_folder = (
-            f"{match.destination}/_Staging"
-            if match.destination
-            else "00_Inbox/_Staging"
-        )
+        dest_folder = f"{match.destination}/_Staging" if match.destination else "00_Inbox/_Staging"
 
     # --- Step 5: Normalize folder name ---
     normalized_name = folder_path.name.replace(" ", "_")
@@ -462,23 +488,22 @@ def ingest_folder(
         shutil.move(str(folder_path), str(destination))
         logger.info(
             "Moved folder: %s → %s (%d files, %.1fMB)",
-            folder_path.name, dest_full, file_count, total_size_mb,
+            folder_path.name,
+            dest_full,
+            file_count,
+            total_size_mb,
         )
     except OSError as exc:
         logger.error("Failed to move folder %s: %s", folder_path.name, exc)
         return _error_result(f"Move failed: {exc}")
 
     # --- Step 7: Register all files as assets ---
-    dest_rel = str(
-        destination.relative_to(mywork_root.resolve())
-    ).replace("\\", "/")
+    dest_rel = str(destination.relative_to(mywork_root.resolve())).replace("\\", "/")
 
     for f in destination.rglob("*"):
         if not f.is_file():
             continue
-        f_rel = str(
-            f.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
+        f_rel = str(f.relative_to(mywork_root.resolve())).replace("\\", "/")
         f_stat = f.stat()
         f_parts = f.relative_to(mywork_root.resolve()).parts
         ops.upsert_asset(
@@ -508,8 +533,7 @@ def ingest_folder(
         method=match.method,
         confidence=match.confidence,
         reasoning=(
-            f"Folder package: series={match.series_id}, "
-            f"rule={match.rule_name}, {file_count} files"
+            f"Folder package: series={match.series_id}, rule={match.rule_name}, {file_count} files"
         ),
     )
 
@@ -520,18 +544,23 @@ def ingest_folder(
     if extract and action in ("routed", "staged"):
         try:
             extraction_cost = _run_package_extraction(
-                destination, mywork_root, ops, package_id,
+                destination,
+                mywork_root,
+                ops,
+                package_id,
                 shared_context=f"All files in this folder relate to: {folder_path.name}",
             )
             extracted = True
             ops.update_package_status(
-                package_id, "extracted",
+                package_id,
+                "extracted",
                 destination_path=dest_rel,
             )
         except Exception as exc:
             logger.warning(
                 "Package extraction failed for %s: %s",
-                folder_path.name, exc,
+                folder_path.name,
+                exc,
             )
 
     return PackageIngestResult(
@@ -565,11 +594,11 @@ def _run_package_extraction(
 
     Returns total API cost.
     """
-    from corp_by_os.overnight.cke_client import is_available, extract_sync
     from corp_by_os.extraction.non_project.manifest_emitter import (
         _make_entry_id,
         _resolve_doc_type,
     )
+    from corp_by_os.overnight.cke_client import extract_sync, is_available
 
     ok, err = is_available()
     if not ok:
@@ -577,6 +606,7 @@ def _run_package_extraction(
         return 0.0
 
     from corp_by_os.config import get_config
+
     cfg = get_config()
 
     # Build a multi-file manifest for the folder
@@ -591,18 +621,18 @@ def _run_package_extraction(
         entry_id = _make_entry_id(
             str(f.relative_to(folder_path)).replace("\\", "/"),
         )
-        file_entries.append({
-            "id": entry_id,
-            "path": str(f),
-            "doc_type": _resolve_doc_type(f.suffix),
-            "name": f.stem,
-            "content_origin": "mywork_ingest",
-            "source_category": "ingest_package",
-            "source_locator": str(
-                f.relative_to(mywork_root.resolve())
-            ).replace("\\", "/"),
-            "shared_context": shared_context,
-        })
+        file_entries.append(
+            {
+                "id": entry_id,
+                "path": str(f),
+                "doc_type": _resolve_doc_type(f.suffix),
+                "name": f.stem,
+                "content_origin": "mywork_ingest",
+                "source_category": "ingest_package",
+                "source_locator": str(f.relative_to(mywork_root.resolve())).replace("\\", "/"),
+                "shared_context": shared_context,
+            }
+        )
 
     if not file_entries:
         return 0.0
@@ -651,11 +681,11 @@ def _run_extraction(
 
     Returns (vault_note_path | None, cost).
     """
-    from corp_by_os.overnight.cke_client import is_available, extract_sync
     from corp_by_os.extraction.non_project.manifest_emitter import (
         _make_entry_id,
         _resolve_doc_type,
     )
+    from corp_by_os.overnight.cke_client import extract_sync, is_available
 
     ok, err = is_available()
     if not ok:
@@ -663,6 +693,7 @@ def _run_extraction(
         return None, 0.0
 
     from corp_by_os.config import get_config
+
     cfg = get_config()
 
     # Build a minimal manifest for this single file
@@ -674,17 +705,19 @@ def _run_extraction(
         "schema_version": 1,
         "project": "ingest",
         "output_dir": str(staging_dir),
-        "files": [{
-            "id": entry_id,
-            "path": str(file_path),
-            "doc_type": _resolve_doc_type(file_path.suffix),
-            "name": file_path.stem,
-            "content_origin": "mywork_ingest",
-            "source_category": "ingest",
-            "source_locator": str(
-                file_path.relative_to(mywork_root.resolve())
-            ).replace("\\", "/"),
-        }],
+        "files": [
+            {
+                "id": entry_id,
+                "path": str(file_path),
+                "doc_type": _resolve_doc_type(file_path.suffix),
+                "name": file_path.stem,
+                "content_origin": "mywork_ingest",
+                "source_category": "ingest",
+                "source_locator": str(file_path.relative_to(mywork_root.resolve())).replace(
+                    "\\", "/"
+                ),
+            }
+        ],
     }
 
     manifest_path = staging_dir / "manifest.json"
@@ -731,21 +764,21 @@ def get_staged_files(mywork_root: Path) -> list[dict]:
     for staging_dir in sorted(mywork_root.rglob("_Staging")):
         if not staging_dir.is_dir():
             continue
-        parent_dest = str(
-            staging_dir.parent.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
+        parent_dest = str(staging_dir.parent.relative_to(mywork_root.resolve())).replace("\\", "/")
 
         for f in sorted(staging_dir.iterdir()):
             if not f.is_file():
                 continue
             if f.name in _SKIP_NAMES:
                 continue
-            staged.append({
-                "path": str(f),
-                "filename": f.name,
-                "staging_dir": str(staging_dir),
-                "parent_destination": parent_dest,
-            })
+            staged.append(
+                {
+                    "path": str(f),
+                    "filename": f.name,
+                    "staging_dir": str(staging_dir),
+                    "parent_destination": parent_dest,
+                }
+            )
 
     return staged
 
@@ -789,12 +822,8 @@ def finalize_file(
 
     # Update ops.db
     try:
-        source_rel = str(
-            staged_path.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
-        dest_rel = str(
-            dest_file.relative_to(mywork_root.resolve())
-        ).replace("\\", "/")
+        source_rel = str(staged_path.relative_to(mywork_root.resolve())).replace("\\", "/")
+        dest_rel = str(dest_file.relative_to(mywork_root.resolve())).replace("\\", "/")
 
         ops.update_asset_status(
             source_rel,

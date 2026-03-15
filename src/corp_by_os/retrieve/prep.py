@@ -132,7 +132,8 @@ def generate_prep(
 
     if not result.notes:
         logger.info(
-            "No notes with client=%s, trying broader search...", client,
+            "No notes with client=%s, trying broader search...",
+            client,
         )
         result = retrieve(
             query=client,
@@ -163,9 +164,7 @@ def generate_prep(
         full_content += f"*Generated: {datetime.now().isoformat()}*\n"
         full_content += f"*Sources: {len(result.notes)} notes*\n"
         if result.coverage_gaps:
-            full_content += (
-                f"*Gaps: {', '.join(result.coverage_gaps)}*\n"
-            )
+            full_content += f"*Gaps: {', '.join(result.coverage_gaps)}*\n"
         full_content += f"\n---\n\n{briefing_text}"
 
         output_path.write_text(full_content, encoding="utf-8")
@@ -196,7 +195,7 @@ def build_notes_context(notes: list[RetrievedNote]) -> str:
     context_parts: list[str] = []
     total_chars = 0
 
-    for i, note in enumerate(notes):
+    for _, note in enumerate(notes):
         header = (
             f"### [{note.title}]\n"
             f"Client: {note.client or 'N/A'} | "

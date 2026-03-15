@@ -77,8 +77,11 @@ def json_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             topics, products, domains, confidence, note_path)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            "general", "", "Platform Architecture",
-            "training", "documentation",
+            "general",
+            "",
+            "Platform Architecture",
+            "training",
+            "documentation",
             json.dumps(["Architecture", "Platform"]),
             json.dumps(["Platform"]),
             json.dumps(["Platform"]),
@@ -96,6 +99,7 @@ def json_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
 
     import corp_by_os.index_builder
+
     monkeypatch.setattr(corp_by_os.index_builder, "get_index_path", lambda: db_path)
 
     return db_path
@@ -125,9 +129,17 @@ class TestJSONFormat:
         if data["notes"]:
             note = data["notes"][0]
             for field in [
-                "note_id", "title", "content", "products", "topics",
-                "relevance_score", "confidence", "overlay_data",
-                "source_path", "extracted_at", "citation",
+                "note_id",
+                "title",
+                "content",
+                "products",
+                "topics",
+                "relevance_score",
+                "confidence",
+                "overlay_data",
+                "source_path",
+                "extracted_at",
+                "citation",
             ]:
                 assert field in note, f"Missing field: {field}"
 
@@ -145,7 +157,8 @@ class TestJSONFormat:
         """Empty results produce valid JSON with empty notes list."""
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["retrieve", "xyznonexistent", "--format", "json"],
+            cli,
+            ["retrieve", "xyznonexistent", "--format", "json"],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)

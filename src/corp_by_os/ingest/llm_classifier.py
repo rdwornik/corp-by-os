@@ -11,7 +11,7 @@ import json
 import logging
 import re
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -165,8 +165,8 @@ def classify_file_llm(
 
 
 def classify_quarantined_batch(
-    ops: "OpsDB",  # noqa: F821
-    registry: "ContentRegistry",  # noqa: F821
+    ops: OpsDB,  # noqa: F821
+    registry: ContentRegistry,  # noqa: F821
     mywork_root: Path,
     model: str = "gemini-2.0-flash",
     budget: float = 0.50,
@@ -196,7 +196,8 @@ def classify_quarantined_batch(
         if estimated_cost + cost_per_call > budget:
             logger.warning(
                 "Budget cap reached ($%.2f). %d files remaining.",
-                budget, len(quarantined) - len(results),
+                budget,
+                len(quarantined) - len(results),
             )
             break
 
@@ -211,16 +212,22 @@ def classify_quarantined_batch(
         )
         estimated_cost += cost_per_call
 
-        results.append({
-            "asset_id": asset["id"],
-            "path": asset["path"],
-            "filename": asset["filename"],
-            "classification": classification,
-        })
+        results.append(
+            {
+                "asset_id": asset["id"],
+                "path": asset["path"],
+                "filename": asset["filename"],
+                "classification": classification,
+            }
+        )
 
         if not dry_run and classification.destination != "00_Inbox/_Unmatched":
             _move_to_staging(
-                asset, classification, mywork_root, ops, cost_per_call,
+                asset,
+                classification,
+                mywork_root,
+                ops,
+                cost_per_call,
             )
 
     return results
@@ -230,7 +237,7 @@ def _move_to_staging(
     asset: dict,
     classification: LLMClassification,
     mywork_root: Path,
-    ops: "OpsDB",  # noqa: F821
+    ops: OpsDB,  # noqa: F821
     cost: float,
 ) -> None:
     """Move a classified file from quarantine to _Staging at its destination."""
@@ -239,11 +246,7 @@ def _move_to_staging(
         logger.warning("Source file not found for staging: %s", asset["path"])
         return
 
-    staging_dest = (
-        mywork_root
-        / classification.destination.replace("/", "\\")
-        / "_Staging"
-    )
+    staging_dest = mywork_root / classification.destination.replace("/", "\\") / "_Staging"
     staging_dest.mkdir(parents=True, exist_ok=True)
     dest_file = staging_dest / src_path.name
 
@@ -253,9 +256,7 @@ def _move_to_staging(
         logger.error("Failed to stage %s: %s", asset["filename"], exc)
         return
 
-    dest_rel = str(
-        dest_file.relative_to(mywork_root.resolve())
-    ).replace("\\", "/")
+    dest_rel = str(dest_file.relative_to(mywork_root.resolve())).replace("\\", "/")
 
     ops.update_asset_path(asset["path"], dest_rel)
     ops.update_asset_status(
@@ -279,7 +280,7 @@ def _move_to_staging(
     )
 
 
-def _get_all_destinations(registry: "ContentRegistry") -> list[str]:  # noqa: F821
+def _get_all_destinations(registry: ContentRegistry) -> list[str]:  # noqa: F821
     """Extract all valid destinations from registry."""
     dests: set[str] = set()
     for series in registry.data.get("series", {}).values():
@@ -289,18 +290,20 @@ def _get_all_destinations(registry: "ContentRegistry") -> list[str]:  # noqa: F8
         if rule.get("destination"):
             dests.add(rule["destination"])
     # Standard folders
-    dests.update([
-        "10_Projects",
-        "20_Extra_Initiatives",
-        "30_Templates/01_Presentation_Decks",
-        "30_Templates/02_Demo_Scripts",
-        "30_Templates/03_Discovery_Tools",
-        "30_Templates/90_Reference_Baselines",
-        "50_RFP",
-        "50_RFP/_databases",
-        "60_Source_Library/01_Product_Docs",
-        "60_Source_Library/02_Training_Enablement",
-        "60_Source_Library/03_Competitive",
-        "70_Admin",
-    ])
+    dests.update(
+        [
+            "10_Projects",
+            "20_Extra_Initiatives",
+            "30_Templates/01_Presentation_Decks",
+            "30_Templates/02_Demo_Scripts",
+            "30_Templates/03_Discovery_Tools",
+            "30_Templates/90_Reference_Baselines",
+            "50_RFP",
+            "50_RFP/_databases",
+            "60_Source_Library/01_Product_Docs",
+            "60_Source_Library/02_Training_Enablement",
+            "60_Source_Library/03_Competitive",
+            "70_Admin",
+        ]
+    )
     return sorted(dests)

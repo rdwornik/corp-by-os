@@ -22,6 +22,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 REVIEW_AGE_DAYS = 180  # 6 months
+SKIP_FILENAMES = {"synthesis.md", "index.md"}  # CKE package files, not extractable notes
 
 
 @dataclass
@@ -140,13 +141,18 @@ def scan_note_freshness(
     fm = parse_frontmatter(note_path)
     if fm is None:
         return _make_result(
-            note_str, None, "error", "Cannot parse frontmatter",
+            note_str,
+            None,
+            "error",
+            "Cannot parse frontmatter",
         )
 
     source_path_str = fm.get("source_path") or fm.get("source")
     if not source_path_str:
         return _make_result(
-            note_str, None, "no_source",
+            note_str,
+            None,
+            "no_source",
             "No source_path in frontmatter (legacy v1 note)",
             extracted_at=fm.get("extracted_at"),
         )
@@ -171,8 +177,10 @@ def scan_note_freshness(
     # Check if source exists
     if not source_file.exists():
         return _make_result(
-            note_str, str(source_path_str),
-            "orphaned", f"Source file missing: {source_path_str}",
+            note_str,
+            str(source_path_str),
+            "orphaned",
+            f"Source file missing: {source_path_str}",
             **common,
         )
 
@@ -186,14 +194,17 @@ def scan_note_freshness(
     if source_mtime_old and current_mtime == str(source_mtime_old):
         if days_since and days_since > REVIEW_AGE_DAYS:
             return _make_result(
-                note_str, str(source_path_str),
+                note_str,
+                str(source_path_str),
                 "review_due",
                 f"Extracted {days_since} days ago (>{REVIEW_AGE_DAYS}d threshold)",
                 **common,
             )
         return _make_result(
-            note_str, str(source_path_str),
-            "fresh", "Source unchanged (mtime match)",
+            note_str,
+            str(source_path_str),
+            "fresh",
+            "Source unchanged (mtime match)",
             **common,
         )
 
@@ -202,30 +213,38 @@ def scan_note_freshness(
         current_hash = compute_hash(source_file)
     except Exception as exc:
         return _make_result(
-            note_str, str(source_path_str),
-            "error", f"Cannot hash source: {exc}",
+            note_str,
+            str(source_path_str),
+            "error",
+            f"Cannot hash source: {exc}",
             **common,
         )
     common["source_hash_new"] = current_hash
 
     if source_hash_old and current_hash != source_hash_old:
         return _make_result(
-            note_str, str(source_path_str),
-            "stale", "Source file content changed (hash mismatch)",
+            note_str,
+            str(source_path_str),
+            "stale",
+            "Source file content changed (hash mismatch)",
             **common,
         )
 
     # Hash matches or no old hash — check age
     if days_since and days_since > REVIEW_AGE_DAYS:
         return _make_result(
-            note_str, str(source_path_str),
-            "review_due", f"Extracted {days_since} days ago",
+            note_str,
+            str(source_path_str),
+            "review_due",
+            f"Extracted {days_since} days ago",
             **common,
         )
 
     return _make_result(
-        note_str, str(source_path_str),
-        "fresh", "Source unchanged",
+        note_str,
+        str(source_path_str),
+        "fresh",
+        "Source unchanged",
         **common,
     )
 
@@ -249,6 +268,8 @@ def scan_vault_freshness(
         if not scan_dir.exists():
             continue
         for md_file in scan_dir.rglob("*.md"):
+            if md_file.name in SKIP_FILENAMES:
+                continue
             result = scan_note_freshness(md_file, mywork_root)
             summary.total_scanned += 1
             summary.results.append(result)
