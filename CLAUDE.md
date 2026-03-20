@@ -139,6 +139,14 @@ py -m pytest -k "test_query"  # run specific tests
 | `corp-os-meta` | Shared metadata schemas (local package) |
 | `google-genai` | Gemini Flash LLM (optional, `pip install -e ".[llm]"`) |
 
+## API keys
+
+Keys loaded globally from `Documents/.secrets/.env` via PowerShell profile.
+Do NOT add API keys to local `.env`.
+Check: `keys list` | Update: `keys set KEY value` | Reload: `keys reload`
+
+This repo uses: `GEMINI_API_KEY` (audit, cleanup classifier, LLM router, overnight preflight/CKE client)
+
 ## Known issues
 
 - **No test coverage** for: `config.py`, `cli.py`, `models.py`, `__main__.py`, `overnight/cke_client.py`, `extraction/vault_writer.py`
